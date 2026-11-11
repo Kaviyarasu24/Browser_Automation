@@ -3,6 +3,7 @@ import type { PageElement, PageState } from './page-state.js'
 import {
   animateMouseMove,
   animateMouseClick,
+  animateHighlightTarget,
   animateActionBadge,
   animateScrollCue
 } from './cursor.js'
@@ -86,8 +87,12 @@ export async function clickElement(wc: WebContents, index: number): Promise<Acti
     return { ok: false, summary: `Element ${index} is not reachable at a valid position.` }
   }
 
-  // Visually animate virtual mouse gliding to target position
+  // Visually animate virtual mouse gliding to target position and highlight target
   await animateMouseMove(wc, x, y)
+  await animateHighlightTarget(wc, target.x, target.y, target.w, target.h)
+  if (target.label) {
+    await animateActionBadge(wc, `Click: ${target.label.slice(0, 24)}`)
+  }
   await delay(220)
 
   // Trigger click ripple animation
@@ -146,13 +151,38 @@ export async function scrollPage(
 ): Promise<ActionResult> {
   if (wc.isDestroyed()) return { ok: false, summary: 'Page was closed.' }
 
-  await animateScrollCue(wc, direction)
+  const cueText = direction === 'down' ? `↓ Scrolling Down (${amount}px)` : `↑ Scrolling Up (${amount}px)`
+  await animateScrollCue(wc, cueText)
 
-  const delta = direction === 'down' ? Math.abs(amount) : -Math.abs(amount)
-  await wc.executeJavaScript(`window.scrollBy({ top: ${delta}, behavior: 'instant' })`, true)
-  await settle(wc, 350)
+  // Position cursor in center of viewport to show scrolling activity
+  await animateMouseMove(wc, 450, 350)
 
-  const y = (await wc.executeJavaScript('Math.round(window.scrollY)', true)) as number
+  const totalDelta = direction === 'down' ? Math.abs(amount) : -Math.abs(amount)
+  const steps = 6
+  const stepDelta = Math.round(totalDelta / steps)
+
+  for (let i = 0; i < steps; i++) {
+    if (wc.isDestroyed()) break
+    // Real mouse wheel event for dynamic content & feeds
+    wc.sendInputEvent({
+      type: 'mouseWheel',
+      x: 450,
+      y: 350,
+      deltaX: 0,
+      deltaY: -stepDelta,
+      canScroll: true
+    })
+    // Smooth window scroll
+    await wc.executeJavaScript(
+      `window.scrollBy({ top: ${stepDelta}, behavior: 'smooth' })`,
+      true
+    ).catch(() => {})
+    await delay(60)
+  }
+
+  await settle(wc, 300)
+
+  const y = (await wc.executeJavaScript('Math.round(window.scrollY)', true).catch(() => 0)) as number
   return { ok: true, summary: `Scrolled ${direction} to y=${y}.` }
 }
 
@@ -169,11 +199,11 @@ export async function scrollTo(wc: WebContents, y: number): Promise<ActionResult
   await wc.executeJavaScript(
     `(() => {
        const target = Math.max(0, ${Math.round(y)} - window.innerHeight / 2);
-       window.scrollTo({ top: target, behavior: 'instant' });
+       window.scrollTo({ top: target, behavior: 'smooth' });
      })()`,
     true
   )
-  await settle(wc, 300)
+  await settle(wc, 350)
   return { ok: true, summary: `Scrolled element into view.` }
 }
 

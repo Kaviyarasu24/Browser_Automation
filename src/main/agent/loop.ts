@@ -15,6 +15,7 @@ import {
   checkSensitiveType,
   checkSensitiveNavigation
 } from '../browser/safeguards.js'
+import { animateMouseMove, animateActionBadge } from '../browser/cursor.js'
 import { BROWSER_TOOLS } from './tools.js'
 import { LlmError, complete, type ChatMessage, type ToolCall } from './llm.js'
 import type { AgentEvent } from '../../shared/types.js'
@@ -88,6 +89,8 @@ export async function runAgent(opts: RunOptions): Promise<void> {
   }
 
   emit({ type: 'start', task, model: cfg.model })
+  void animateMouseMove(wc, 350, 250)
+  void animateActionBadge(wc, '🍓 Strawberry Agent Active', 2500)
 
   const messages: ChatMessage[] = [
     { role: 'system', content: SYSTEM_PROMPT },
@@ -302,6 +305,17 @@ async function executeTool(
         await wc.loadURL(target).catch((err: Error) => {
           throw new Error(`navigation failed: ${err.message}`)
         })
+        setTimeout(() => {
+          if (!wc.isDestroyed()) {
+            void animateMouseMove(wc, 350, 250)
+            try {
+              const host = new URL(target).hostname
+              void animateActionBadge(wc, `Navigated: ${host}`, 2000)
+            } catch {
+              /* ignore */
+            }
+          }
+        }, 350)
         return report({ ok: true, summary: `Navigated to ${target}.` }, { url: target })
       }
 
