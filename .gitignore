@@ -1,0 +1,37 @@
+# ── Secrets ────────────────────────────────────────────────────────────
+# NEVER commit. Contains a live OpenRouter/Anthropic API key.
+.env
+.env.*
+!.env.example
+
+# ── Python (legacy main.py experiment) ─────────────────────────────────
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# ── Node / Electron ────────────────────────────────────────────────────
+node_modules/
+out/
+dist/
+release/
+*.tsbuildinfo
+
+# ── Runtime data ───────────────────────────────────────────────────────
+# Browser profile: cookies, localStorage, logins. Never commit.
+.userdata/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# ── OS / editor ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# ── Logs ───────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
