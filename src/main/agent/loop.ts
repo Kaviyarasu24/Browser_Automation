@@ -15,7 +15,14 @@ import {
   checkSensitiveType,
   checkSensitiveNavigation
 } from '../browser/safeguards.js'
-import { animateMouseMove, animateActionBadge } from '../browser/cursor.js'
+import {
+  animateMouseMove,
+  animateActionBadge,
+  animateNavigateUrl,
+  animateScanning,
+  startCursorHeartbeat,
+  stopCursorHeartbeat
+} from '../browser/cursor.js'
 import { BROWSER_TOOLS } from './tools.js'
 import { LlmError, complete, type ChatMessage, type ToolCall } from './llm.js'
 import type { AgentEvent } from '../../shared/types.js'
@@ -89,6 +96,7 @@ export async function runAgent(opts: RunOptions): Promise<void> {
   }
 
   emit({ type: 'start', task, model: cfg.model })
+  startCursorHeartbeat(wc)
   void animateMouseMove(wc, 350, 250)
   void animateActionBadge(wc, '🍓 Strawberry Agent Active', 2500)
 
@@ -183,6 +191,8 @@ export async function runAgent(opts: RunOptions): Promise<void> {
       message: `The agent stopped unexpectedly: ${(err as Error).message}`,
       hint: `Ran for ${Math.round((Date.now() - started) / 1000)}s over ${step} step(s).`
     })
+  } finally {
+    stopCursorHeartbeat()
   }
 }
 
@@ -267,6 +277,7 @@ async function executeTool(
   try {
     switch (name) {
       case 'read_page': {
+        await animateScanning(wc)
         const state = await capturePageState(wc)
         emit({
           type: 'result',
@@ -302,20 +313,15 @@ async function executeTool(
           }
         }
 
+        // Emit navigating event to UI so address bar animates at 2x speed
+        emit({ type: 'navigating', url: target })
+
+        // Animate virtual cursor gliding to URL bar, clicking, and typing URL at 2x speed
+        await animateNavigateUrl(wc, target)
+
         await wc.loadURL(target).catch((err: Error) => {
           throw new Error(`navigation failed: ${err.message}`)
         })
-        setTimeout(() => {
-          if (!wc.isDestroyed()) {
-            void animateMouseMove(wc, 350, 250)
-            try {
-              const host = new URL(target).hostname
-              void animateActionBadge(wc, `Navigated: ${host}`, 2000)
-            } catch {
-              /* ignore */
-            }
-          }
-        }, 350)
         return report({ ok: true, summary: `Navigated to ${target}.` }, { url: target })
       }
 
@@ -382,8 +388,10 @@ async function executeTool(
         return report(await scrollPage(wc, direction, amount))
       }
 
-      case 'go_back':
+      case 'go_back': {
+        await animateActionBadge(wc, '← Going Back', 1200)
         return report(await goBack(wc))
+      }
 
       case 'press_key': {
         const key = requireString(args, 'key')
@@ -393,6 +401,7 @@ async function executeTool(
 
       case 'wait': {
         const seconds = typeof args.seconds === 'number' ? args.seconds : 2
+        await animateActionBadge(wc, `⏳ Waiting (${seconds}s)...`, seconds * 1000)
         return report(await waitFor(wc, seconds))
       }
 
@@ -413,6 +422,7 @@ async function executeTool(
         const summary = requireString(args, 'summary') ?? 'Task finished with no summary.'
         const success = args.success !== false
 
+        await animateActionBadge(wc, success ? '🎉 Task Complete!' : '⏹ Finished', 3000)
         emit({ type: 'result', step, name, ok: true, summary })
         return {
           result: { ok: true, summary: 'Run complete.' },

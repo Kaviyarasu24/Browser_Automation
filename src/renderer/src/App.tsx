@@ -77,6 +77,22 @@ export function App(): React.JSX.Element {
       if (event.type === 'start') {
         setAgentStatus('running')
         setActiveConfirmation(null)
+      } else if (event.type === 'navigating') {
+        // Animate URL typing into address bar at 2x speed
+        let typed = ''
+        const url = event.url
+        const chunk = 2
+        let idx = 0
+        const timer = setInterval(() => {
+          if (idx >= url.length) {
+            clearInterval(timer)
+            setUrlInput(url)
+            return
+          }
+          typed += url.slice(idx, idx + chunk)
+          idx += chunk
+          setUrlInput(typed)
+        }, 25)
       } else if (event.type === 'confirmation_required') {
         setActiveConfirmation({
           id: event.id,
@@ -284,6 +300,13 @@ export function App(): React.JSX.Element {
                         <div key={i} className="event-card">
                           <div className="event-header">🚀 Task started</div>
                           <div>{ev.task}</div>
+                        </div>
+                      )
+                    case 'navigating':
+                      return (
+                        <div key={i} className="event-card">
+                          <div className="event-header">🌐 Navigating to Address</div>
+                          <div style={{ wordBreak: 'break-all', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{ev.url}</div>
                         </div>
                       )
                     case 'thinking':

@@ -127,9 +127,20 @@ export async function typeInto(
 
   if (wc.isDestroyed()) return { ok: false, summary: 'Page was closed during typing.' }
 
-  await animateActionBadge(wc, `Typing: ${text.slice(0, 16)}${text.length > 16 ? '…' : ''}`)
-  wc.insertText(text)
-  await delay(120)
+  // Brisk 2x typing speed character-by-character (~25ms per char) with live action badge
+  let typedBuffer = ''
+  for (let i = 0; i < text.length; i++) {
+    if (wc.isDestroyed()) return { ok: false, summary: 'Page was closed during typing.' }
+    const ch = text[i]!
+    typedBuffer += ch
+    wc.insertText(ch)
+    if (i % 2 === 0 || i === text.length - 1) {
+      void animateActionBadge(wc, `Typing: "${typedBuffer.slice(-18)}"▎`, 500)
+    }
+    await delay(25)
+  }
+
+  await delay(100)
 
   if (submit) {
     await animateActionBadge(wc, '⏎ Enter', 600)

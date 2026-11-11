@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import type { ContentBounds, TabState } from '../../shared/types.js'
 import { BROWSER_PARTITION, browserUserAgent } from './session.js'
+import { ensureCursor } from './cursor.js'
 
 export interface Tab {
   id: string
@@ -234,6 +235,9 @@ export class TabManager extends EventEmitter {
 
     wc.on('did-navigate', (_e, url) => syncUrl(url))
     wc.on('did-navigate-in-page', (_e, url) => syncUrl(url))
+    wc.on('dom-ready', () => {
+      void ensureCursor(wc)
+    })
 
     // A crashed renderer leaves a blank tab with no explanation.
     wc.on('render-process-gone', (_e, details) => {

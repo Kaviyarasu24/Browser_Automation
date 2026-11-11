@@ -1,27 +1,36 @@
 import type { WebContents } from 'electron'
 
 /**
- * High-visibility virtual mouse cursor system for Strawberry.
- * Uses CSP-safe DOM construction (no innerHTML) in a Shadow Root,
- * ensuring it works reliably on all modern websites including those with strict CSP.
+ * High-visibility persistent virtual mouse cursor system for Strawberry.
+ * Maintains cursor state across page navigations, SPAs, and full page reloads,
+ * ensuring the cursor remains visible at all times once an agent task begins.
  */
 
-const CURSOR_INIT_SCRIPT = `
+let lastX = 350
+let lastY = 220
+let heartbeatTimer: NodeJS.Timeout | null = null
+let activeWebContents: WebContents | null = null
+
+function getCursorScript(initialX: number, initialY: number): string {
+  return `
 (() => {
-  if (window.__strawberryCursor) return window.__strawberryCursor;
+  let host = document.getElementById('__strawberry_cursor_host');
+  if (host && window.__strawberryCursor) {
+    // Already active, just make sure visible
+    host.style.display = 'block';
+    return window.__strawberryCursor;
+  }
 
-  // Remove any legacy host
-  const oldHost = document.getElementById('__strawberry_cursor_host');
-  if (oldHost) oldHost.remove();
+  if (host) host.remove();
 
-  const host = document.createElement('div');
+  host = document.createElement('div');
   host.id = '__strawberry_cursor_host';
-  host.setAttribute('style', 'position:fixed!important;top:0!important;left:0!important;width:100vw!important;height:100vh!important;pointer-events:none!important;z-index:2147483647!important;overflow:hidden!important;');
+  host.setAttribute('style', 'position:fixed!important;top:0!important;left:0!important;width:100vw!important;height:100vh!important;pointer-events:none!important;z-index:2147483647!important;overflow:hidden!important;display:block!important;opacity:1!important;visibility:visible!important;');
   (document.body || document.documentElement).appendChild(host);
 
   const shadow = host.attachShadow ? host.attachShadow({ mode: 'open' }) : host;
 
-  // Safe style injection without innerHTML
+  // Safe style injection without innerHTML (CSP immune)
   const style = document.createElement('style');
   style.textContent = \`
     * { pointer-events: none !important; }
@@ -32,19 +41,22 @@ const CURSOR_INIT_SCRIPT = `
       width: 32px;
       height: 32px;
       z-index: 2147483647;
-      transform: translate3d(200px, 200px, 0);
-      transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
+      transform: translate3d(\${${Math.round(initialX)}}px, \${${Math.round(initialY)}}px, 0);
+      transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
       will-change: transform;
-      filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.6));
+      filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.65));
+      display: block !important;
+      opacity: 1 !important;
+      visibility: visible !important;
     }
     .cursor-svg {
       width: 28px;
       height: 28px;
       transform-origin: 3px 3px;
-      transition: transform 0.12s ease;
+      transition: transform 0.1s ease;
     }
     .cursor-wrapper.pressing .cursor-svg {
-      transform: scale(0.8);
+      transform: scale(0.78);
     }
     .cursor-tip-glow {
       position: absolute;
@@ -54,32 +66,32 @@ const CURSOR_INIT_SCRIPT = `
       height: 8px;
       border-radius: 50%;
       background: #ff3366;
-      box-shadow: 0 0 12px 3px #ff3366;
-      animation: tip-pulse 1.4s infinite ease-in-out;
+      box-shadow: 0 0 14px 4px #ff3366;
+      animation: tip-pulse 1.2s infinite ease-in-out;
     }
     @keyframes tip-pulse {
-      0%, 100% { transform: scale(0.85); opacity: 0.8; }
-      50% { transform: scale(1.3); opacity: 1; }
+      0%, 100% { transform: scale(0.85); opacity: 0.85; }
+      50% { transform: scale(1.35); opacity: 1; }
     }
     .ripple {
       position: fixed;
       border-radius: 50%;
       border: 3px solid #ff3366;
-      background: rgba(255, 51, 102, 0.4);
+      background: rgba(255, 51, 102, 0.45);
       transform: translate(-50%, -50%) scale(0.1);
-      animation: ripple-fx 0.55s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+      animation: ripple-fx 0.5s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
       z-index: 2147483646;
     }
     @keyframes ripple-fx {
       0% {
-        width: 15px;
-        height: 15px;
+        width: 14px;
+        height: 14px;
         transform: translate(-50%, -50%) scale(0.2);
         opacity: 1;
       }
       100% {
-        width: 60px;
-        height: 60px;
+        width: 65px;
+        height: 65px;
         transform: translate(-50%, -50%) scale(1);
         opacity: 0;
       }
@@ -87,15 +99,15 @@ const CURSOR_INIT_SCRIPT = `
     .highlight-box {
       position: fixed;
       border: 2px solid #ff3366;
-      background: rgba(255, 51, 102, 0.15);
+      background: rgba(255, 51, 102, 0.18);
       border-radius: 6px;
       z-index: 2147483645;
-      box-shadow: 0 0 16px rgba(255, 51, 102, 0.45);
-      transition: all 0.2s ease;
-      animation: highlight-pulse 0.4s ease-out;
+      box-shadow: 0 0 16px rgba(255, 51, 102, 0.5);
+      transition: all 0.18s ease;
+      animation: highlight-pulse 0.35s ease-out;
     }
     @keyframes highlight-pulse {
-      0% { opacity: 0; transform: scale(0.96); }
+      0% { opacity: 0; transform: scale(0.95); }
       100% { opacity: 1; transform: scale(1); }
     }
     .badge {
@@ -115,7 +127,7 @@ const CURSOR_INIT_SCRIPT = `
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
       opacity: 0;
       transform: translateY(4px);
-      transition: opacity 0.2s ease, transform 0.2s ease;
+      transition: opacity 0.18s ease, transform 0.18s ease;
       z-index: 2147483647;
     }
     .badge.visible {
@@ -156,7 +168,6 @@ const CURSOR_INIT_SCRIPT = `
   tipGlow.className = 'cursor-tip-glow';
   wrapper.appendChild(tipGlow);
 
-  // SVG Pointer
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('class', 'cursor-svg');
   svg.setAttribute('viewBox', '0 0 24 24');
@@ -196,14 +207,14 @@ const CURSOR_INIT_SCRIPT = `
       this.moveTo(x, y);
       if (wrapper) {
         wrapper.classList.add('pressing');
-        setTimeout(() => wrapper.classList.remove('pressing'), 180);
+        setTimeout(() => wrapper.classList.remove('pressing'), 160);
       }
       const ripple = document.createElement('div');
       ripple.className = 'ripple';
       ripple.style.left = \`\${Math.round(x)}px\`;
       ripple.style.top = \`\${Math.round(y)}px\`;
       shadow.appendChild(ripple);
-      setTimeout(() => ripple.remove(), 600);
+      setTimeout(() => ripple.remove(), 550);
     },
     highlight(x, y, w, h) {
       if (activeHighlight) activeHighlight.remove();
@@ -244,20 +255,50 @@ const CURSOR_INIT_SCRIPT = `
   return window.__strawberryCursor;
 })()
 `
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
 
 export async function ensureCursor(wc: WebContents): Promise<void> {
   if (wc.isDestroyed()) return
-  const url = wc.getURL()
-  if (!url || url === 'about:blank') return
   try {
-    await wc.executeJavaScript(CURSOR_INIT_SCRIPT, true)
+    await wc.executeJavaScript(getCursorScript(lastX, lastY), true)
   } catch {
-    /* ignore if frame is tearing down */
+    /* ignore if frame is not ready */
   }
+}
+
+export function startCursorHeartbeat(wc: WebContents): void {
+  activeWebContents = wc
+  if (heartbeatTimer) clearInterval(heartbeatTimer)
+
+  void ensureCursor(wc)
+  void animateMouseMove(wc, lastX, lastY)
+
+  // Every 600ms, ensure cursor host is attached and visible
+  heartbeatTimer = setInterval(() => {
+    if (!activeWebContents || activeWebContents.isDestroyed()) {
+      stopCursorHeartbeat()
+      return
+    }
+    void ensureCursor(activeWebContents)
+  }, 600)
+}
+
+export function stopCursorHeartbeat(): void {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer)
+    heartbeatTimer = null
+  }
+  activeWebContents = null
 }
 
 export async function animateMouseMove(wc: WebContents, x: number, y: number): Promise<void> {
   if (wc.isDestroyed()) return
+  lastX = x
+  lastY = y
   try {
     await ensureCursor(wc)
     await wc.executeJavaScript(`window.__strawberryCursor?.moveTo(${x}, ${y})`, true)
@@ -268,6 +309,8 @@ export async function animateMouseMove(wc: WebContents, x: number, y: number): P
 
 export async function animateMouseClick(wc: WebContents, x: number, y: number): Promise<void> {
   if (wc.isDestroyed()) return
+  lastX = x
+  lastY = y
   try {
     await ensureCursor(wc)
     await wc.executeJavaScript(`window.__strawberryCursor?.click(${x}, ${y})`, true)
@@ -319,6 +362,56 @@ export async function animateScrollCue(
     await ensureCursor(wc)
     const escaped = JSON.stringify(text)
     await wc.executeJavaScript(`window.__strawberryCursor?.showScroll(${escaped})`, true)
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Animate the virtual cursor gliding to the address bar, clicking it,
+ * typing the destination URL at 2x speed, and pressing Enter.
+ */
+export async function animateNavigateUrl(wc: WebContents, url: string): Promise<void> {
+  if (wc.isDestroyed()) return
+  try {
+    // 1. Move to top URL address area
+    await animateMouseMove(wc, 320, 25)
+    await delay(180)
+
+    // 2. Click URL bar
+    await animateMouseClick(wc, 320, 25)
+    await delay(100)
+
+    // 3. Type out URL at brisk 2x speed (~25ms per chunk)
+    const cleanUrl = url.replace(/^https?:\/\//i, '')
+    let typed = ''
+    const chunkSize = 3
+    for (let i = 0; i < cleanUrl.length; i += chunkSize) {
+      if (wc.isDestroyed()) break
+      typed += cleanUrl.slice(i, i + chunkSize)
+      void animateActionBadge(wc, `URL: ${typed}▎`, 500)
+      await delay(25)
+    }
+
+    await delay(120)
+    await animateActionBadge(wc, '⏎ Enter', 600)
+    await delay(180)
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Quick scanning radar sweep for read_page action.
+ */
+export async function animateScanning(wc: WebContents): Promise<void> {
+  if (wc.isDestroyed()) return
+  try {
+    await animateActionBadge(wc, '🔍 Scanning Page Elements...', 1200)
+    await animateMouseMove(wc, lastX + 60, lastY + 30)
+    await delay(150)
+    await animateMouseMove(wc, lastX - 30, lastY + 10)
+    await delay(150)
   } catch {
     /* ignore */
   }

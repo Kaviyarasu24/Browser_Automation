@@ -1,8 +1,8 @@
 # 🍓 Strawberry
 
-> **AI-first desktop browser.** An autonomous browser agent that drives your real, logged-in desktop browsing session.
+> **AI-first desktop browser.** An autonomous browser agent that drives your real, authenticated desktop browsing session with a live, persistent virtual cursor.
 
-Strawberry is a desktop browser built with **Electron**, **TypeScript**, **Vite**, and **React**. Unlike conventional headless agents or Playwright-based bots that spin up empty, ephemeral browser contexts every run, Strawberry operates directly within your persistent user partition (`persist:strawberry`). 
+Strawberry is an AI desktop browser built with **Electron**, **TypeScript**, **Vite**, and **React**. Unlike conventional headless agents or Playwright-based bots that spin up empty, ephemeral browser contexts every run, Strawberry operates directly within your persistent user partition (`persist:strawberry`). 
 
 Because it runs inside your genuine desktop session with stored cookies and local credentials, the agent can interact with your logged-in services without triggering login walls, multi-factor prompts, or bot-detection heuristics.
 
@@ -11,12 +11,33 @@ Because it runs inside your genuine desktop session with stored cookies and loca
 ## ✨ Features
 
 - **Persistent Real-User Sessions**: Uses Electron's persistent storage partition (`persist:strawberry`) and a desktop Chrome User-Agent string. Your logins, cookies, and local storage persist across sessions and app restarts.
-- **Human-in-the-Loop Safeguards**: Automatically pauses execution and alerts the user for approval when high-risk actions are detected (purchases/checkout, deletion/account changes, credential inputs, or cross-domain hops).
-- **On-Screen Virtual Mouse**: Features an animated virtual mouse cursor that visually glides across the viewport to target elements, emits glowing click ripple effects, displays live action badges (e.g., `Typing: ...`, `⏎ Enter`), and animates scrolling cues.
-- **Native OS Input Events**: Dispatches real hardware-level input events via `WebContentsView.sendInputEvent` and `insertText` instead of synthetic `element.click()`, ensuring compatibility with React/Vue frameworks and bypassing bot-detection blocks.
+- **Always-Active Virtual Mouse**: A high-visibility on-screen cursor that stays active throughout the entire agent run. A background watchdog guarantees the cursor never disappears across page navigations, redirects, or SPA route transitions.
+- **CSP & Trusted Types Immune**: Built using safe programmatic DOM & SVG node construction inside a Shadow Root (`attachShadow`), rendering reliably on strict sites (e.g., Google, Cricbuzz) without being blocked by Content Security Policy.
+- **Animated URL Navigation**: When opening an address, the virtual cursor visibly glides to the address bar, clicks to focus, types the destination URL at **2x speed** with a live keystroke badge, and presses Enter in sync with the browser's address bar.
+- **Link & Target Element Highlighting**: Before clicking any button or link, the cursor glides to the target, paints an animated glowing highlight box around the element, and displays a preview action badge.
+- **2x Speed Typing with Live Caret**: Form fields and search inputs are filled character-by-character at brisk 2x speed (~25ms/char) with a live typing badge and blinking cursor (`Typing: "..."▎`), followed by animated `⏎ Enter` submissions.
+- **Smooth Window Scrolling with Wheel Events**: Replaces instant jump scrolls with smooth multi-step window scrolling paired with hardware-level `mouseWheel` events and floating directional indicators.
+- **Human-in-the-Loop Safeguards**: Automatically pauses execution and alerts the user for approval via an interactive banner when high-risk operations are detected (purchases/checkout, account deletion, sensitive credential typing, or cross-domain hops).
+- **Native OS Input Events**: Dispatches real hardware-level input events via `WebContentsView.sendInputEvent` and `insertText` instead of synthetic `element.click()`, ensuring compatibility with React/Vue frameworks and bypassing bot heuristics.
 - **Dynamic Coordinate Resolution**: Evaluates page state and re-verifies interactive element coordinates immediately before taking actions, preventing misclicks caused by layout shifts or lazy-loaded content.
-- **Integrated Agent Sidebar**: Clean dark-mode React shell with a real-time activity feed displaying the model's step-by-step thinking, tool calls, argument inspection, results, and cancellation controls.
 - **OpenAI-Compatible LLM Integration**: Connects to any provider speaking the OpenAI Chat Completions protocol (OpenRouter, OpenAI, Groq, local vLLM, Ollama, etc.) with automated tool calling.
+
+---
+
+## 🎬 Live Cursor Action Matrix
+
+Every action performed by the agent is visually animated through the on-screen cursor:
+
+| Action | Cursor Animation & Visual Feedback |
+| :--- | :--- |
+| **`navigate`** | Glides to the address bar, clicks, types out URL at 2x speed, flashes `⏎ Enter`, and navigates |
+| **`read_page`** | Performs a radar scanning sweep across the viewport with badge: `🔍 Scanning Page Elements...` |
+| **`click`** | Glides to coordinates, draws an animated glowing highlight box around the link/button, shows click badge, and triggers ripple |
+| **`type`** | Focuses field, types character-by-character at 2x speed with a live caret badge (`Typing: "..."▎`), and submits |
+| **`scroll`** | Centers cursor, displays floating directional pill (`↓ Scrolling Down (800px)`), and rolls page in smooth wheel steps |
+| **`go_back`** | Glides toward top-left with `← Going Back` badge |
+| **`wait`** | Floats gently in place with a live countdown badge: `⏳ Waiting (Ns)...` |
+| **`done`** | Glides to viewport center with a celebratory `🎉 Task Complete!` badge |
 
 ---
 
@@ -39,10 +60,10 @@ strawberry/
 │   │   └── browser/
 │   │       ├── session.ts     # Persistent partition & Chrome User-Agent setup
 │   │       ├── tabs.ts        # WebContentsView lifecycle & tab management
-│   │       ├── actions.ts     # Native input event dispatchers
+│   │       ├── actions.ts     # Native input event dispatchers & smooth scrolling
 │   │       ├── safeguards.ts  # Sensitive action & domain boundary detection
 │   │       ├── page-state.ts  # DOM extraction script for interactive elements
-│   │       └── cursor.ts      # Injected Shadow-DOM virtual mouse overlay
+│   │       └── cursor.ts      # Persistent Shadow-DOM virtual mouse overlay
 │   ├── preload/
 │   │   ├── index.ts           # Context-isolated IPC bridge (contextBridge)
 │   │   └── index.d.ts         # Global TypeScript definitions for window.api
@@ -113,20 +134,16 @@ OPENROUTER_SITE_NAME=Strawberry
 
 ---
 
-## 🤖 Supported Agent Tools
+## 🛡️ Human-in-the-Loop Confirmation Gates
 
-The autonomous loop exposes the following tools to the LLM:
+Because Strawberry operates inside your genuine, authenticated browser session, the agent includes built-in safeguards to protect sensitive data and prevent unwanted actions:
 
-- `read_page`: Captures the current URL, page title, scroll position, and a numbered list of all visible interactive DOM elements with their screen coordinates.
-- `navigate`: Navigates the active tab to an absolute URL.
-- `click`: Moves the virtual cursor to an element's center coordinate, triggers a click animation, and sends native mouse events.
-- `type`: Focuses the input element, displays an on-screen typing badge, inserts text, and optionally presses Enter.
-- `scroll`: Scrolls the viewport up or down with animated scroll indicators.
-- `go_back`: Navigates backward in tab history.
-- `press_key`: Sends navigation and dialog keys (`Enter`, `Escape`, `Tab`, `ArrowDown`, etc.).
-- `wait`: Pauses execution to allow dynamic asynchronous content to settle.
-- `open_tab`: Opens a URL in a new background tab.
-- `done`: Finalizes the task and presents a summary of findings to the user.
+1. **Financial & Purchases**: Intercepts actions with keywords like `pay`, `purchase`, `buy now`, `place order`, `checkout`, `transfer`, and `billing`.
+2. **Destructive Actions**: Catches actions containing `delete`, `destroy`, `terminate`, `delete account`, `cancel subscription`, etc.
+3. **Credentials & Cards**: Flags attempts to type into password, CVV, or card number fields.
+4. **Cross-Domain Boundaries**: Halts and requests approval before navigating away from the established domain to an external third-party site.
+
+When a safeguard is triggered, the agent pauses automatically and displays an amber **"🛡️ Safeguard Alert"** banner in the sidebar with **"✓ Approve Action"** and **"✕ Deny (Block)"** options.
 
 ---
 
@@ -135,4 +152,3 @@ The autonomous loop exposes the following tools to the LLM:
 - **Partition Isolation**: Untrusted web pages run in isolated `WebContentsView` containers with `nodeIntegration: false`, `contextIsolation: true`, and `sandbox: true`. Web pages cannot access Electron or Node APIs.
 - **IPC Whitelist**: Only the main React shell window has access to the preload bridge (`window.api`).
 - **Data Persistence**: Browsing profile data, cookies, and tokens are stored locally under your operating system's standard user data path (`userData/Partitions/strawberry`) and are never sent to external servers other than the sites you visit.
-

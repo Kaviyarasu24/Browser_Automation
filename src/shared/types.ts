@@ -32,6 +32,7 @@ export interface PublicConfig {
 
 export type AgentEvent =
   | { type: 'start'; task: string; model: string }
+  | { type: 'navigating'; url: string }
   | { type: 'thinking'; step: number; text: string }
   | { type: 'tool'; step: number; name: string; args: Record<string, unknown> }
   | { type: 'result'; step: number; name: string; ok: boolean; summary: string }
