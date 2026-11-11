@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { getConfig, validateConfig } from './config.js'
 import { TabManager, tabUserAgent } from './browser/tabs.js'
 import { runAgent } from './agent/loop.js'
@@ -9,6 +10,7 @@ import type { ContentBounds, AgentEvent, PublicConfig } from '../shared/types.js
 let mainWindow: BrowserWindow | null = null
 let tabManager: TabManager | null = null
 let activeAgentAbort: AbortController | null = null
+const pendingConfirmations = new Map<string, (approved: boolean) => void>()
 
 function createWindow(): void {
   const cfg = getConfig()
@@ -60,7 +62,7 @@ function createWindow(): void {
   // Create initial tab once ready
   mainWindow.webContents.once('did-finish-load', () => {
     if (tabManager && tabManager.list().length === 0) {
-      tabManager.create('https://news.ycombinator.com', true)
+      tabManager.create('about:blank', true)
     }
   })
 
@@ -181,22 +183,65 @@ function setupIpc(): void {
           cfg,
           tabs: tabManager!,
           emit,
+          confirm: (info) => {
+            const id = randomUUID()
+            return new Promise<boolean>((resolve) => {
+              const cleanup = () => {
+                pendingConfirmations.delete(id)
+              }
+              pendingConfirmations.set(id, (approved) => {
+                cleanup()
+                resolve(approved)
+              })
+              emit({
+                type: 'confirmation_required',
+                id,
+                step: 0,
+                title: info.title,
+                description: info.description,
+                action: info.action,
+                target: info.target
+              })
+              abortController.signal.addEventListener('abort', () => {
+                cleanup()
+                resolve(false)
+              })
+            })
+          },
           signal: abortController.signal
         })
       } finally {
         if (activeAgentAbort === abortController) {
           activeAgentAbort = null
         }
+        for (const resolve of pendingConfirmations.values()) {
+          resolve(false)
+        }
+        pendingConfirmations.clear()
       }
     })()
 
     return { ok: true }
   })
 
+  ipcMain.handle('agent:confirm', (_event, id: string, approved: boolean) => {
+    const resolve = pendingConfirmations.get(id)
+    if (resolve) {
+      resolve(approved)
+      pendingConfirmations.delete(id)
+      return { ok: true }
+    }
+    return { ok: false }
+  })
+
   ipcMain.handle('agent:cancel', () => {
     if (activeAgentAbort) {
       activeAgentAbort.abort()
       activeAgentAbort = null
+      for (const resolve of pendingConfirmations.values()) {
+        resolve(false)
+      }
+      pendingConfirmations.clear()
       return { ok: true }
     }
     return { ok: false }

@@ -10,6 +10,11 @@ import {
   waitFor,
   type ActionResult
 } from '../browser/actions.js'
+import {
+  checkSensitiveClick,
+  checkSensitiveType,
+  checkSensitiveNavigation
+} from '../browser/safeguards.js'
 import { BROWSER_TOOLS } from './tools.js'
 import { LlmError, complete, type ChatMessage, type ToolCall } from './llm.js'
 import type { AgentEvent } from '../../shared/types.js'
@@ -36,6 +41,12 @@ export interface RunOptions {
   cfg: RuntimeConfig
   tabs: TabManager
   emit: (event: AgentEvent) => void
+  confirm: (info: {
+    title: string
+    description: string
+    action: string
+    target?: string
+  }) => Promise<boolean>
   signal: AbortSignal
 }
 
@@ -53,7 +64,7 @@ interface DoneResult {
  * context smaller and makes the loop's behaviour legible in the action log.
  */
 export async function runAgent(opts: RunOptions): Promise<void> {
-  const { task, cfg, tabs, emit, signal } = opts
+  const { task, cfg, tabs, emit, confirm, signal } = opts
   const started = Date.now()
 
   const problems = validateConfig(cfg)
@@ -122,7 +133,15 @@ export async function runAgent(opts: RunOptions): Promise<void> {
         const args = parseArgs(call, emit, step)
         emit({ type: 'tool', step, name: call.function.name, args })
 
-        const outcome = await executeTool(call.function.name, args, tabs, signal, emit, step)
+        const outcome = await executeTool(
+          call.function.name,
+          args,
+          tabs,
+          signal,
+          emit,
+          confirm,
+          step
+        )
 
         // `done` ends the run immediately.
         if (outcome.done) {
@@ -208,6 +227,12 @@ async function executeTool(
   tabs: TabManager,
   signal: AbortSignal,
   emit: (e: AgentEvent) => void,
+  confirm: (info: {
+    title: string
+    description: string
+    action: string
+    target?: string
+  }) => Promise<boolean>,
   step: number
 ): Promise<ToolOutcome> {
   if (args.__malformed) {
@@ -258,6 +283,22 @@ async function executeTool(
         const target = normaliseUrl(url)
         if (!target) return report({ ok: false, summary: `"${url}" is not a usable URL.` })
 
+        const check = checkSensitiveNavigation(target, wc.getURL())
+        if (check.sensitive) {
+          const approved = await confirm({
+            title: check.title,
+            description: check.description,
+            action: 'navigate',
+            target
+          })
+          if (!approved) {
+            return report({
+              ok: false,
+              summary: `Navigation blocked: User declined confirmation to navigate to external domain ${target}.`
+            })
+          }
+        }
+
         await wc.loadURL(target).catch((err: Error) => {
           throw new Error(`navigation failed: ${err.message}`)
         })
@@ -267,6 +308,27 @@ async function executeTool(
       case 'click': {
         const index = requireInt(args, 'index')
         if (index === null) return report({ ok: false, summary: 'click needs an integer "index".' })
+
+        const state = await capturePageState(wc)
+        const el = state.elements[index]
+        if (el) {
+          const check = checkSensitiveClick(el)
+          if (check.sensitive) {
+            const approved = await confirm({
+              title: check.title,
+              description: check.description,
+              action: 'click',
+              target: `<${el.tag}> ${el.label || '(unlabelled)'}`
+            })
+            if (!approved) {
+              return report({
+                ok: false,
+                summary: 'Action blocked: User declined confirmation to click this sensitive element.'
+              })
+            }
+          }
+        }
+
         return report(await clickElement(wc, index))
       }
 
@@ -275,6 +337,27 @@ async function executeTool(
         const text = requireString(args, 'text')
         if (index === null) return report({ ok: false, summary: 'type needs an integer "index".' })
         if (text === null) return report({ ok: false, summary: 'type needs a "text" string.' })
+
+        const state = await capturePageState(wc)
+        const el = state.elements[index]
+        if (el) {
+          const check = checkSensitiveType(el, text)
+          if (check.sensitive) {
+            const approved = await confirm({
+              title: check.title,
+              description: check.description,
+              action: 'type',
+              target: `<${el.tag}> ${el.label || ''}`
+            })
+            if (!approved) {
+              return report({
+                ok: false,
+                summary: 'Action blocked: User declined confirmation to type into this sensitive field.'
+              })
+            }
+          }
+        }
+
         const submit = args.submit === true
         return report(await typeInto(wc, index, text, submit))
       }

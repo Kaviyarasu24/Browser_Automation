@@ -11,6 +11,7 @@ Because it runs inside your genuine desktop session with stored cookies and loca
 ## ✨ Features
 
 - **Persistent Real-User Sessions**: Uses Electron's persistent storage partition (`persist:strawberry`) and a desktop Chrome User-Agent string. Your logins, cookies, and local storage persist across sessions and app restarts.
+- **Human-in-the-Loop Safeguards**: Automatically pauses execution and alerts the user for approval when high-risk actions are detected (purchases/checkout, deletion/account changes, credential inputs, or cross-domain hops).
 - **On-Screen Virtual Mouse**: Features an animated virtual mouse cursor that visually glides across the viewport to target elements, emits glowing click ripple effects, displays live action badges (e.g., `Typing: ...`, `⏎ Enter`), and animates scrolling cues.
 - **Native OS Input Events**: Dispatches real hardware-level input events via `WebContentsView.sendInputEvent` and `insertText` instead of synthetic `element.click()`, ensuring compatibility with React/Vue frameworks and bypassing bot-detection blocks.
 - **Dynamic Coordinate Resolution**: Evaluates page state and re-verifies interactive element coordinates immediately before taking actions, preventing misclicks caused by layout shifts or lazy-loaded content.
@@ -39,6 +40,7 @@ strawberry/
 │   │       ├── session.ts     # Persistent partition & Chrome User-Agent setup
 │   │       ├── tabs.ts        # WebContentsView lifecycle & tab management
 │   │       ├── actions.ts     # Native input event dispatchers
+│   │       ├── safeguards.ts  # Sensitive action & domain boundary detection
 │   │       ├── page-state.ts  # DOM extraction script for interactive elements
 │   │       └── cursor.ts      # Injected Shadow-DOM virtual mouse overlay
 │   ├── preload/

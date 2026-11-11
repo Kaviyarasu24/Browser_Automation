@@ -111,19 +111,35 @@ export async function complete(
   if (tools.length > 0) payload.tools = tools
 
   let res: Response
+  const timeoutMs = 60_000
+  const timeoutController = new AbortController()
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs)
+
+  const abortListener = () => timeoutController.abort()
+  signal.addEventListener('abort', abortListener)
+
   try {
     res = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
-      signal
+      signal: timeoutController.signal
     })
   } catch (err) {
-    if ((err as Error).name === 'AbortError') throw err
+    if (signal.aborted) throw err
+    if (timeoutController.signal.aborted) {
+      throw new LlmError(
+        `LLM request timed out after ${timeoutMs / 1000} seconds.`,
+        'The provider may be overloaded or queued. Consider switching to a faster model tier.'
+      )
+    }
     throw new LlmError(
       `Could not reach the provider at ${cfg.baseUrl}.`,
       `Network error: ${(err as Error).message}. Check BASE_URL and your connection.`
     )
+  } finally {
+    clearTimeout(timeoutId)
+    signal.removeEventListener('abort', abortListener)
   }
 
   const raw = await res.text()

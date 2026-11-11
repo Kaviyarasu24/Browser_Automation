@@ -11,6 +11,13 @@ export function App(): React.JSX.Element {
   const [agentStatus, setAgentStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [events, setEvents] = useState<AgentEvent[]>([])
   const [pingStatus, setPingStatus] = useState<string | null>(null)
+  const [activeConfirmation, setActiveConfirmation] = useState<{
+    id: string
+    title: string
+    description: string
+    action: string
+    target?: string
+  } | null>(null)
 
   const contentRef = useRef<HTMLDivElement>(null)
   const feedEndRef = useRef<HTMLDivElement>(null)
@@ -69,12 +76,24 @@ export function App(): React.JSX.Element {
       setEvents((prev) => [...prev, event])
       if (event.type === 'start') {
         setAgentStatus('running')
+        setActiveConfirmation(null)
+      } else if (event.type === 'confirmation_required') {
+        setActiveConfirmation({
+          id: event.id,
+          title: event.title,
+          description: event.description,
+          action: event.action,
+          target: event.target
+        })
       } else if (event.type === 'done') {
         setAgentStatus('done')
+        setActiveConfirmation(null)
       } else if (event.type === 'error') {
         setAgentStatus('error')
+        setActiveConfirmation(null)
       } else if (event.type === 'cancelled') {
         setAgentStatus('idle')
+        setActiveConfirmation(null)
       }
     })
 
@@ -120,7 +139,22 @@ export function App(): React.JSX.Element {
     }
   }
 
+  const handleApprove = async () => {
+    if (!activeConfirmation) return
+    const id = activeConfirmation.id
+    setActiveConfirmation(null)
+    await window.api?.agent.confirm(id, true)
+  }
+
+  const handleDeny = async () => {
+    if (!activeConfirmation) return
+    const id = activeConfirmation.id
+    setActiveConfirmation(null)
+    await window.api?.agent.confirm(id, false)
+  }
+
   const handleCancelAgent = async () => {
+    setActiveConfirmation(null)
     await window.api?.agent.cancel()
     setAgentStatus('idle')
   }
@@ -277,6 +311,21 @@ export function App(): React.JSX.Element {
                           <div>{ev.summary}</div>
                         </div>
                       )
+                    case 'confirmation_required':
+                      return (
+                        <div key={i} className="event-card confirmation">
+                          <div className="event-header">
+                            <span>🛡️ Confirmation Required</span>
+                          </div>
+                          <div style={{ fontWeight: 600 }}>{ev.title}</div>
+                          <div style={{ marginTop: 2 }}>{ev.description}</div>
+                          {ev.target && (
+                            <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>
+                              Target: {ev.target}
+                            </div>
+                          )}
+                        </div>
+                      )
                     case 'done':
                       return (
                         <div key={i} className="event-card done">
@@ -305,6 +354,30 @@ export function App(): React.JSX.Element {
               )}
               <div ref={feedEndRef} />
             </div>
+
+            {/* Active Confirmation Gate Banner */}
+            {activeConfirmation && (
+              <div className="confirmation-banner">
+                <div className="confirmation-header">
+                  <span className="confirmation-badge">🛡️ Safeguard Alert</span>
+                  <span className="confirmation-title">{activeConfirmation.title}</span>
+                </div>
+                <div className="confirmation-desc">{activeConfirmation.description}</div>
+                {activeConfirmation.target && (
+                  <div className="confirmation-target">
+                    Target: <code>{activeConfirmation.target}</code>
+                  </div>
+                )}
+                <div className="confirmation-actions">
+                  <button className="btn-approve" onClick={handleApprove}>
+                    ✓ Approve Action
+                  </button>
+                  <button className="btn-deny" onClick={handleDeny}>
+                    ✕ Deny (Block)
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="sidebar-footer">
               <textarea

@@ -35,6 +35,15 @@ export type AgentEvent =
   | { type: 'thinking'; step: number; text: string }
   | { type: 'tool'; step: number; name: string; args: Record<string, unknown> }
   | { type: 'result'; step: number; name: string; ok: boolean; summary: string }
+  | {
+      type: 'confirmation_required'
+      id: string
+      step: number
+      title: string
+      description: string
+      action: string
+      target?: string
+    }
   | { type: 'done'; summary: string; steps: number }
   | { type: 'error'; message: string; hint?: string }
   | { type: 'cancelled' }

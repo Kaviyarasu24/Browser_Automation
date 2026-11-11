@@ -120,7 +120,44 @@ const EXTRACT_SCRIPT = `(() => {
 })()`
 
 export async function capturePageState(wc: WebContents): Promise<PageState> {
-  const raw = (await wc.executeJavaScript(EXTRACT_SCRIPT, true)) as PageState
+  const currentUrl = wc.getURL()
+  if (!currentUrl || currentUrl === 'about:blank') {
+    return {
+      url: currentUrl || 'about:blank',
+      title: wc.getTitle() || 'New Tab',
+      text: '(empty page)',
+      elements: [],
+      truncatedText: false,
+      truncatedElements: false,
+      scrollY: 0,
+      scrollHeight: 0,
+      viewportHeight: 800
+    }
+  }
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('capturePageState timed out')), 4000)
+  })
+
+  let raw: PageState
+  try {
+    raw = (await Promise.race([
+      wc.executeJavaScript(EXTRACT_SCRIPT, true),
+      timeoutPromise
+    ])) as PageState
+  } catch {
+    return {
+      url: wc.getURL() || 'about:blank',
+      title: wc.getTitle() || '',
+      text: '',
+      elements: [],
+      truncatedText: false,
+      truncatedElements: false,
+      scrollY: 0,
+      scrollHeight: 0,
+      viewportHeight: 800
+    }
+  }
 
   // Defensive: a page can race teardown and return something unexpected.
   return {

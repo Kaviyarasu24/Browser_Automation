@@ -345,6 +345,108 @@ html, body, #root {
   text-decoration: underline;
 }
 
+/* ── Human-in-the-Loop Confirmation Gate ─────────────────────────── */
+
+.confirmation-banner {
+  margin: 10px 16px 4px 16px;
+  padding: 12px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: slideDown 0.25s ease-out;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.confirmation-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.confirmation-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: var(--warning-muted);
+  color: var(--warning);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.confirmation-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: #fff;
+}
+
+.confirmation-desc {
+  font-size: 12px;
+  color: #e2e8f0;
+  line-height: 1.4;
+}
+
+.confirmation-target {
+  font-size: 11px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.confirmation-target code {
+  background: var(--bg-primary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  color: var(--warning);
+}
+
+.confirmation-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.btn-approve {
+  flex: 1;
+  height: 30px;
+  background: var(--warning);
+  color: #121214;
+  border: none;
+  border-radius: 5px;
+  font-weight: 600;
+  font-size: 11px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn-approve:hover {
+  opacity: 0.9;
+}
+
+.btn-deny {
+  flex: 1;
+  height: 30px;
+  background: var(--bg-elevated);
+  color: #e2e8f0;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-deny:hover {
+  background: var(--error-muted);
+  color: var(--error);
+  border-color: var(--error);
+}
+
 /* ── Sidebar Event Feed ────────────────────────────────────────────── */
 
 .event-feed {
@@ -379,6 +481,11 @@ html, body, #root {
 
 .event-card.result {
   border-left: 3px solid var(--success);
+}
+
+.event-card.confirmation {
+  border-left: 3px solid var(--warning);
+  background: rgba(245, 158, 11, 0.08);
 }
 
 .event-card.done {
@@ -483,4 +590,3 @@ html, body, #root {
   color: #fff;
   border-color: var(--error);
 }
-

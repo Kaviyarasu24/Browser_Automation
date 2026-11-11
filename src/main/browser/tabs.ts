@@ -76,11 +76,10 @@ export class TabManager extends EventEmitter {
       return { action: 'deny' }
     })
 
-    if (url && url !== 'about:blank') {
-      void wc.loadURL(url).catch((err: Error) => {
-        console.warn(`[tabs] load failed for ${url}:`, err.message)
-      })
-    }
+    const targetUrl = url || 'about:blank'
+    void wc.loadURL(targetUrl).catch((err: Error) => {
+      console.warn(`[tabs] load failed for ${targetUrl}:`, err.message)
+    })
 
     if (activate) this.activate(id)
 

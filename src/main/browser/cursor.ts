@@ -190,6 +190,8 @@ const CURSOR_SCRIPT = `
 
 export async function ensureCursor(wc: WebContents): Promise<void> {
   if (wc.isDestroyed()) return
+  const url = wc.getURL()
+  if (!url || url === 'about:blank') return
   try {
     await wc.executeJavaScript(CURSOR_SCRIPT, true)
   } catch (err) {

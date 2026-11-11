@@ -21,6 +21,7 @@ export interface StrawberryApi {
   agent: {
     run: (task: string) => Promise<{ ok: boolean; error?: string }>
     cancel: () => Promise<{ ok: boolean }>
+    confirm: (id: string, approved: boolean) => Promise<{ ok: boolean }>
     onEvent: (callback: (event: AgentEvent) => void) => () => void
   }
 }
@@ -54,6 +55,7 @@ const api: StrawberryApi = {
   agent: {
     run: (task: string) => ipcRenderer.invoke('agent:run', task),
     cancel: () => ipcRenderer.invoke('agent:cancel'),
+    confirm: (id: string, approved: boolean) => ipcRenderer.invoke('agent:confirm', id, approved),
     onEvent: (callback) => {
       const handler = (_event: Electron.IpcRendererEvent, event: AgentEvent) => callback(event)
       ipcRenderer.on('agent:event', handler)
