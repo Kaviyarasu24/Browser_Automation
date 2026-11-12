@@ -1,15 +1,50 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import type { AgentEvent, ContentBounds, DownloadRecord, PublicConfig, TabState } from '../../shared/types.js'
+import {
+  IconBack,
+  IconForward,
+  IconReload,
+  IconHome,
+  IconLock,
+  IconGlobe,
+  IconSearch,
+  IconClose,
+  IconPlus,
+  IconDownload,
+  IconCopy,
+  IconCheck,
+  IconFolder,
+  IconFile,
+  IconStop,
+  IconShield,
+  IconStar,
+  IconSpinner,
+  IconTerminal,
+  IconChevronRight,
+  IconChevronDown,
+  IconPlay
+} from './components/Icons.js'
+
+const QUICK_COMMANDS = [
+  { label: 'Summarize page content and key findings', text: 'Summarize the main content and key takeaways of this page.' },
+  { label: 'Extract table data and export to CSV', text: 'Extract all data tables on this page and export the results to CSV.' },
+  { label: 'Inspect documentation and outline steps', text: 'Read the documentation on this page and outline step-by-step instructions.' },
+  { label: 'Search current topic for latest updates', text: 'Search for recent news and updates on this topic and summarize.' }
+]
 
 export function App(): React.JSX.Element {
   const [tabs, setTabs] = useState<TabState[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [urlInput, setUrlInput] = useState('')
+  const [isOmniboxFocused, setOmniboxFocused] = useState(false)
+  const [copiedUrl, setCopiedUrl] = useState(false)
+  const [isBookmarked, setIsBookmarked] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [config, setConfig] = useState<PublicConfig | null>(null)
   const [taskPrompt, setTaskPrompt] = useState('')
   const [agentStatus, setAgentStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [events, setEvents] = useState<AgentEvent[]>([])
+  const [expandedThoughts, setExpandedThoughts] = useState<Record<number, boolean>>({})
   const [pingStatus, setPingStatus] = useState<string | null>(null)
   const [downloads, setDownloads] = useState<DownloadRecord[]>([])
   const [showDownloadsDrawer, setShowDownloadsDrawer] = useState(false)
@@ -28,15 +63,16 @@ export function App(): React.JSX.Element {
 
   const contentRef = useRef<HTMLDivElement>(null)
   const feedEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null
 
   // Keep URL bar in sync with active tab URL when not actively editing
   useEffect(() => {
-    if (activeTab) {
+    if (activeTab && !isOmniboxFocused) {
       setUrlInput(activeTab.url === 'about:blank' ? '' : activeTab.url)
     }
-  }, [activeTab?.id, activeTab?.url])
+  }, [activeTab?.id, activeTab?.url, isOmniboxFocused])
 
   // Sync content bounds to main process whenever layout or sidebar changes
   const updateBounds = useCallback(() => {
@@ -73,10 +109,13 @@ export function App(): React.JSX.Element {
     })
 
     // Listen for initial tabs
-    window.api.tabs.list().then(({ tabs, activeId }) => {
-      setTabs(tabs)
-      setActiveTabId(activeId)
-    }).catch(console.error)
+    window.api.tabs
+      .list()
+      .then(({ tabs, activeId }) => {
+        setTabs(tabs)
+        setActiveTabId(activeId)
+      })
+      .catch(console.error)
 
     // Listen for agent events
     const unbindAgent = window.api.agent.onEvent((event) => {
@@ -157,8 +196,14 @@ export function App(): React.JSX.Element {
     e.preventDefault()
     if (!activeTabId || !urlInput.trim()) return
     let target = urlInput.trim()
+
+    // Smart omnibox resolution (like Chrome)
     if (!/^https?:\/\//i.test(target) && !target.startsWith('about:')) {
-      target = `https://${target}`
+      if (target.includes('.') && !target.includes(' ')) {
+        target = `https://${target}`
+      } else {
+        target = `https://www.google.com/search?q=${encodeURIComponent(target)}`
+      }
     }
     window.api?.tabs.navigate(activeTabId, target)
   }
@@ -172,12 +217,32 @@ export function App(): React.JSX.Element {
     window.api?.tabs.close(id)
   }
 
-  const handleRunAgent = async () => {
-    if (!taskPrompt.trim() || agentStatus === 'running') return
+  const handleGoHome = () => {
+    if (activeTabId) {
+      window.api?.tabs.navigate(activeTabId, 'https://www.google.com')
+    }
+  }
+
+  const handleCopyUrl = () => {
+    if (!activeTab?.url) return
+    navigator.clipboard.writeText(activeTab.url)
+    setCopiedUrl(true)
+    setTimeout(() => setCopiedUrl(false), 2000)
+  }
+
+  const handleClearUrl = () => {
+    setUrlInput('')
+  }
+
+  const handleRunAgent = async (promptOverride?: string) => {
+    const promptToRun = (promptOverride || taskPrompt).trim()
+    if (!promptToRun || agentStatus === 'running') return
+    setTaskPrompt(promptToRun)
     setEvents([])
+    setExpandedThoughts({})
     setAgentStatus('running')
     setSidebarOpen(true)
-    const res = await window.api?.agent.run(taskPrompt.trim())
+    const res = await window.api?.agent.run(promptToRun)
     if (!res?.ok && res?.error) {
       setAgentStatus('error')
       setEvents((prev) => [...prev, { type: 'error', message: res.error! }])
@@ -205,143 +270,237 @@ export function App(): React.JSX.Element {
   }
 
   const handlePing = async () => {
-    setPingStatus('Testing connection...')
+    setPingStatus('Testing...')
     const res = await window.api?.config.ping()
-    setPingStatus(res ? (res.ok ? '✓ Connected' : `✕ ${res.detail}`) : 'Failed')
-    setTimeout(() => setPingStatus(null), 4000)
+    setPingStatus(res ? (res.ok ? '✓ OK' : `✕ Err`) : 'Failed')
+    setTimeout(() => setPingStatus(null), 3000)
   }
+
+  const isHttps = activeTab?.url.startsWith('https://')
+  const isDownloading = downloads.some((d) => d.state === 'progressing')
 
   return (
     <div className="app-container">
       {/* Header Bar */}
       <div className="header-bar">
-        {/* Tab Strip */}
+        {/* Chrome-Style Tab Strip */}
         <div className="tab-strip">
           {tabs.map((tab) => (
             <div
               key={tab.id}
               className={`tab-item ${tab.id === activeTabId ? 'active' : ''}`}
               onClick={() => window.api?.tabs.activate(tab.id)}
+              title={tab.title || 'New Tab'}
             >
-              {tab.favicon && (
+              {tab.loading ? (
+                <IconSpinner size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+              ) : tab.favicon ? (
                 <img
                   className="tab-favicon"
                   src={tab.favicon}
                   alt=""
                   onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
                 />
+              ) : (
+                <div className="tab-favicon">
+                  <IconGlobe size={14} />
+                </div>
               )}
-              <span className="tab-title">{tab.loading ? 'Loading…' : tab.title || 'Untitled'}</span>
+              <span className="tab-title">{tab.title || (tab.loading ? 'Loading…' : 'New Tab')}</span>
               <button
                 className="tab-close"
                 title="Close tab"
                 onClick={(e) => handleCloseTab(e, tab.id)}
               >
-                ×
+                <IconClose size={12} />
               </button>
             </div>
           ))}
-          <button className="btn-new-tab" title="New tab" onClick={handleCreateTab}>
-            +
+          <button className="btn-new-tab" title="New tab (Ctrl+T)" onClick={handleCreateTab}>
+            <IconPlus size={15} />
           </button>
         </div>
 
-        {/* Navigation & Address Bar */}
+        {/* Chrome Navigation & Omnibox Bar */}
         <div className="nav-bar">
           <div className="nav-buttons">
             <button
               className="btn-icon"
-              title="Back"
+              title="Click to go back"
               disabled={!activeTab?.canGoBack}
               onClick={() => activeTabId && window.api?.tabs.goBack(activeTabId)}
             >
-              ←
+              <IconBack size={16} />
             </button>
             <button
               className="btn-icon"
-              title="Forward"
+              title="Click to go forward"
               disabled={!activeTab?.canGoForward}
               onClick={() => activeTabId && window.api?.tabs.goForward(activeTabId)}
             >
-              →
+              <IconForward size={16} />
             </button>
             <button
               className="btn-icon"
-              title="Reload"
+              title={activeTab?.loading ? 'Reloading...' : 'Reload this page'}
               onClick={() => activeTabId && window.api?.tabs.reload(activeTabId)}
             >
-              ↻
+              <IconReload size={15} className={activeTab?.loading ? 'spin-animation' : ''} />
             </button>
+            <button className="btn-icon" title="Open home page" onClick={handleGoHome}>
+              <IconHome size={16} />
+            </button>
+          </div>
+
+          {/* Chrome-Style Pill Omnibox */}
+          <form className="address-form" onSubmit={handleNavigate}>
+            <div className={`omnibox-container ${isOmniboxFocused ? 'focused' : ''}`}>
+              <button
+                type="button"
+                className={`omnibox-security-btn ${isHttps ? 'secure' : ''}`}
+                title={isHttps ? 'Connection is secure' : 'Search or enter address'}
+              >
+                {isHttps ? (
+                  <IconLock size={13} />
+                ) : urlInput.trim().length === 0 || urlInput.startsWith('about:') ? (
+                  <IconSearch size={13} />
+                ) : (
+                  <IconGlobe size={13} />
+                )}
+              </button>
+
+              <input
+                type="text"
+                className="address-input"
+                value={urlInput}
+                placeholder="Search Google or type a URL"
+                onFocus={() => setOmniboxFocused(true)}
+                onBlur={() => setOmniboxFocused(false)}
+                onChange={(e) => setUrlInput(e.target.value)}
+              />
+
+              <div className="omnibox-actions">
+                {urlInput.length > 0 && isOmniboxFocused && (
+                  <button
+                    type="button"
+                    className="omnibox-action-btn"
+                    title="Clear address"
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      handleClearUrl()
+                    }}
+                  >
+                    <IconClose size={13} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="omnibox-action-btn"
+                  title="Copy page URL"
+                  onClick={handleCopyUrl}
+                >
+                  {copiedUrl ? (
+                    <IconCheck size={13} style={{ color: 'var(--success)' }} />
+                  ) : (
+                    <IconCopy size={13} />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className={`omnibox-action-btn ${isBookmarked ? 'active' : ''}`}
+                  title={isBookmarked ? 'Bookmarked' : 'Bookmark this tab'}
+                  onClick={() => setIsBookmarked((prev) => !prev)}
+                >
+                  <IconStar size={13} fill={isBookmarked ? 'currentColor' : 'none'} />
+                </button>
+              </div>
+            </div>
+          </form>
+
+          {/* Right Toolbar Actions */}
+          <div className="nav-buttons">
             <button
               className={`btn-icon ${showDownloadsDrawer ? 'active' : ''}`}
               title="Downloads"
               onClick={() => setShowDownloadsDrawer((prev) => !prev)}
             >
-              📥
-              {downloads.some((d) => d.state === 'progressing') && (
+              <IconDownload size={16} />
+              {isDownloading ? (
                 <span className="download-active-dot" />
-              )}
+              ) : downloads.length > 0 ? (
+                <span className="download-badge-count">{downloads.length}</span>
+              ) : null}
+            </button>
+
+            <button
+              className={`btn-agent-toggle ${sidebarOpen ? 'active' : ''}`}
+              title="Toggle Agent Console"
+              onClick={() => setSidebarOpen((prev) => !prev)}
+            >
+              <IconTerminal size={14} />
+              <span className={`agent-dot ${agentStatus === 'running' ? 'running' : ''}`} />
+              <span>Console</span>
             </button>
           </div>
-
-          <form className="address-form" onSubmit={handleNavigate}>
-            <input
-              type="text"
-              className="address-input"
-              value={urlInput}
-              placeholder="Search or enter web address"
-              onChange={(e) => setUrlInput(e.target.value)}
-            />
-          </form>
-
-          <button
-            className={`btn-agent-toggle ${sidebarOpen ? 'active' : ''}`}
-            onClick={() => setSidebarOpen((prev) => !prev)}
-          >
-            <span className={`agent-dot ${agentStatus === 'running' ? 'running' : ''}`} />
-            Strawberry AI
-          </button>
         </div>
 
-        {/* Downloads Popover Drawer */}
+        {/* Chrome Downloads Drawer Popover */}
         {showDownloadsDrawer && (
           <div className="downloads-popover">
             <div className="downloads-popover-header">
               <span>Downloads ({downloads.length})</span>
               <button
                 className="btn-icon"
-                style={{ width: 20, height: 20, fontSize: 13 }}
+                style={{ width: 22, height: 22 }}
                 onClick={() => setShowDownloadsDrawer(false)}
               >
-                ×
+                <IconClose size={13} />
               </button>
             </div>
             <div className="downloads-list">
               {downloads.length === 0 ? (
-                <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
-                  No downloads yet
+                <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
+                  <IconDownload size={28} style={{ opacity: 0.35, marginBottom: 8 }} />
+                  <div>No downloads in this session</div>
                 </div>
               ) : (
                 downloads.map((d) => (
                   <div key={d.id} className="download-item-card">
-                    <div className="download-item-title" title={d.filename}>
-                      {d.filename}
-                    </div>
-                    <div className="download-item-meta">
-                      <span>{formatBytes(d.totalBytes || d.receivedBytes)}</span>
-                      <span
-                        style={{
-                          textTransform: 'capitalize',
-                          color:
-                            d.state === 'completed'
-                              ? 'var(--success)'
-                              : d.state === 'progressing'
-                                ? 'var(--info)'
-                                : 'var(--error)'
-                        }}
-                      >
-                        {d.state}
-                      </span>
+                    <div className="download-item-top">
+                      <div className="download-file-icon">
+                        <IconFile size={18} />
+                      </div>
+                      <div className="download-item-details">
+                        <div className="download-item-title" title={d.filename}>
+                          {d.filename}
+                        </div>
+                        <div className="download-item-meta">
+                          <span>{formatBytes(d.totalBytes || d.receivedBytes)}</span>
+                          <span>•</span>
+                          <span
+                            style={{
+                              textTransform: 'capitalize',
+                              fontWeight: 600,
+                              color:
+                                d.state === 'completed'
+                                  ? 'var(--success)'
+                                  : d.state === 'progressing'
+                                    ? 'var(--info)'
+                                    : 'var(--error)'
+                            }}
+                          >
+                            {d.state}
+                          </span>
+                        </div>
+                        {d.state === 'progressing' && d.totalBytes > 0 && (
+                          <div className="download-progress-bar-bg">
+                            <div
+                              className="download-progress-bar-fill"
+                              style={{ width: `${Math.min(100, Math.round((d.receivedBytes / d.totalBytes) * 100))}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="download-item-actions">
                       {d.state === 'completed' && (
@@ -349,14 +508,14 @@ export function App(): React.JSX.Element {
                           className="btn-file-action"
                           onClick={() => window.api?.downloads.openFile(d.savePath)}
                         >
-                          Open File
+                          <IconFile size={12} /> Open
                         </button>
                       )}
                       <button
                         className="btn-file-action"
                         onClick={() => window.api?.downloads.showInFolder(d.savePath)}
                       >
-                        Show in Folder
+                        <IconFolder size={12} /> Show in Folder
                       </button>
                     </div>
                   </div>
@@ -372,139 +531,210 @@ export function App(): React.JSX.Element {
         {/* Placeholder container where TabManager positions active WebContentsView */}
         <div className="web-content-placeholder" ref={contentRef} />
 
-        {/* AI Agent Sidebar */}
+        {/* Professional Developer Agent Console */}
         {sidebarOpen && (
           <aside className="sidebar">
             <div className="sidebar-header">
               <div className="sidebar-title-group">
-                <span className="sidebar-title">Strawberry Agent</span>
+                <IconTerminal size={15} className="sidebar-term-icon" />
+                <span className="sidebar-title">Agent Console</span>
                 <span className={`status-badge ${agentStatus}`}>{agentStatus}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {events.length > 0 && (
+                  <button
+                    className="btn-icon"
+                    style={{ width: 24, height: 24, fontSize: 11 }}
+                    title="Clear console output"
+                    onClick={() => {
+                      setEvents([])
+                      setExpandedThoughts({})
+                    }}
+                  >
+                    Clear
+                  </button>
+                )}
+                <button
+                  className="btn-icon"
+                  style={{ width: 24, height: 24 }}
+                  title="Close console"
+                  onClick={() => setSidebarOpen(false)}
+                >
+                  <IconClose size={13} />
+                </button>
               </div>
             </div>
 
             <div className="sidebar-model-info">
-              <span>Model: <strong className="model-name">{config?.model || 'not set'}</strong></span>
-              {tokenStats && (
-                <span
-                  className="token-counter-pill"
-                  title={`Prompt: ${tokenStats.prompt.toLocaleString()} | Output: ${tokenStats.completion.toLocaleString()}`}
-                >
-                  ⚡ {(tokenStats.total / 1000).toFixed(1)}k tok
-                </span>
-              )}
-              <button className="btn-ping" onClick={handlePing}>
-                {pingStatus || 'Test API'}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>TARGET:</span>
+                <strong className="model-name">{config?.model || 'default'}</strong>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {tokenStats && (
+                  <span
+                    className="token-counter-pill"
+                    title={`Prompt: ${tokenStats.prompt.toLocaleString()} | Completion: ${tokenStats.completion.toLocaleString()}`}
+                  >
+                    {tokenStats.total.toLocaleString()} tok
+                  </span>
+                )}
+                <button className="btn-ping" onClick={handlePing}>
+                  {pingStatus || 'Ping'}
+                </button>
+              </div>
             </div>
 
             <div className="event-feed">
               {events.length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 40, fontSize: 12 }}>
-                  Enter a task below to let Strawberry operate the browser.
+                <div className="console-empty-state">
+                  <div className="console-empty-icon">
+                    <IconTerminal size={20} />
+                  </div>
+                  <div className="console-empty-title">Ready for instructions</div>
+                  <div className="console-empty-subtitle">
+                    Enter a task command below to control this browser session autonomously.
+                  </div>
+                  <div className="console-templates-list">
+                    <div className="console-templates-header">Quick Commands</div>
+                    {QUICK_COMMANDS.map((cmd, idx) => (
+                      <button
+                        key={idx}
+                        className="console-template-item"
+                        onClick={() => {
+                          setTaskPrompt(cmd.text)
+                          textareaRef.current?.focus()
+                        }}
+                      >
+                        <span className="template-prefix">$</span>
+                        <span className="template-label">{cmd.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 events.map((ev, i) => {
                   switch (ev.type) {
                     case 'start':
                       return (
-                        <div key={i} className="event-card">
-                          <div className="event-header">🚀 Task started</div>
-                          <div>{ev.task}</div>
+                        <div key={i} className="log-entry start">
+                          <div className="log-entry-header">
+                            <span className="log-tag">INIT</span>
+                            <span className="log-meta">TASK</span>
+                          </div>
+                          <div className="log-entry-body">{ev.task}</div>
                         </div>
                       )
                     case 'navigating':
                       return (
-                        <div key={i} className="event-card">
-                          <div className="event-header">🌐 Navigating to Address</div>
-                          <div style={{ wordBreak: 'break-all', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{ev.url}</div>
+                        <div key={i} className="log-entry nav">
+                          <div className="log-entry-header">
+                            <span className="log-tag nav">NAVIGATE</span>
+                            <span className="log-meta">HTTP</span>
+                          </div>
+                          <div className="log-url-box">{ev.url}</div>
                         </div>
                       )
-                    case 'thinking':
+                    case 'thinking': {
+                      const isExpanded = expandedThoughts[ev.step] ?? false
                       return (
-                        <div key={i} className="event-card thinking">
-                          <div className="event-header">💭 Step {ev.step} Thinking</div>
-                          <div>{ev.text}</div>
+                        <div key={i} className="log-entry thinking">
+                          <button
+                            type="button"
+                            className="log-disclosure-btn"
+                            onClick={() =>
+                              setExpandedThoughts((prev) => ({ ...prev, [ev.step]: !isExpanded }))
+                            }
+                          >
+                            {isExpanded ? <IconChevronDown size={13} /> : <IconChevronRight size={13} />}
+                            <span>Reasoning (Step {ev.step})</span>
+                          </button>
+                          {isExpanded && (
+                            <div className="log-thought-content">{ev.text}</div>
+                          )}
                         </div>
                       )
+                    }
                     case 'tool':
                       return (
-                        <div key={i} className="event-card tool">
-                          <div className="event-header">
-                            <span>🔧 Step {ev.step}: <strong>{ev.name}</strong></span>
+                        <div key={i} className="log-entry tool">
+                          <div className="log-entry-header">
+                            <span className="log-tag tool">STEP {ev.step}</span>
+                            <span className="log-tool-name">{ev.name}</span>
                           </div>
-                          <pre className="event-code">{JSON.stringify(ev.args, null, 2)}</pre>
+                          <pre className="log-code-block">{JSON.stringify(ev.args, null, 2)}</pre>
                         </div>
                       )
                     case 'result':
                       return (
-                        <div key={i} className="event-card result">
-                          <div className="event-header">
-                            <span>{ev.ok ? '✓' : '✕'} {ev.name}</span>
+                        <div key={i} className="log-entry result">
+                          <div className="log-entry-header">
+                            <span className={`log-tag ${ev.ok ? 'success' : 'fail'}`}>
+                              {ev.ok ? '✓ OK' : '✕ FAILED'}
+                            </span>
+                            <span className="log-meta">{ev.name}</span>
                           </div>
-                          <div>{ev.summary}</div>
+                          <div className="log-entry-body">{ev.summary}</div>
                         </div>
                       )
                     case 'download':
                       return (
-                        <div key={i} className="event-card download">
-                          <div className="event-header">
-                            <span>📥 Download {ev.state === 'completed' ? '✓' : ev.state === 'started' ? '⏳' : '✕'}</span>
-                            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                              {formatBytes(ev.size)}
-                            </span>
+                        <div key={i} className="log-entry download">
+                          <div className="log-entry-header">
+                            <span className="log-tag info">DOWNLOAD</span>
+                            <span className="log-meta">{formatBytes(ev.size)}</span>
                           </div>
-                          <div style={{ fontWeight: 600, fontSize: 12, wordBreak: 'break-all' }}>{ev.filename}</div>
-                          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, wordBreak: 'break-all' }}>
-                            {ev.path}
-                          </div>
-                          <div className="download-item-actions" style={{ marginTop: 6 }}>
+                          <div className="log-file-name">{ev.filename}</div>
+                          <div className="log-file-path">{ev.path}</div>
+                          <div className="log-actions-row">
                             {ev.state === 'completed' && (
                               <button
-                                className="btn-file-action"
+                                className="btn-log-action"
                                 onClick={() => window.api?.downloads.openFile(ev.path)}
                               >
-                                Open File
+                                <IconFile size={12} /> Open
                               </button>
                             )}
                             <button
-                              className="btn-file-action"
+                              className="btn-log-action"
                               onClick={() => window.api?.downloads.showInFolder(ev.path)}
                             >
-                              Show in Folder
+                              <IconFolder size={12} /> Reveal
                             </button>
                           </div>
                         </div>
                       )
                     case 'confirmation_required':
                       return (
-                        <div key={i} className="event-card confirmation">
-                          <div className="event-header">
-                            <span>🛡️ Confirmation Required</span>
+                        <div key={i} className="log-entry security">
+                          <div className="log-entry-header">
+                            <span className="log-tag warning">
+                              <IconShield size={11} /> SECURITY CHECK
+                            </span>
+                            <span className="log-meta">Authorization Required</span>
                           </div>
-                          <div style={{ fontWeight: 600 }}>{ev.title}</div>
-                          <div style={{ marginTop: 2 }}>{ev.description}</div>
+                          <div className="log-security-title">{ev.title}</div>
+                          <div className="log-entry-body">{ev.description}</div>
                           {ev.target && (
-                            <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>
-                              Target: {ev.target}
+                            <div className="log-security-target">
+                              Target: <code>{ev.target}</code>
                             </div>
                           )}
                         </div>
                       )
                     case 'done':
                       return (
-                        <div key={i} className="event-card done">
-                          <div className="event-header">
-                            <span>🎉 Completed in {ev.steps} steps</span>
-                            {ev.totalTokens && (
-                              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                                {ev.totalTokens.toLocaleString()} tokens
-                              </span>
-                            )}
+                        <div key={i} className="log-entry done">
+                          <div className="log-entry-header">
+                            <span className="log-tag success">COMPLETE</span>
+                            <span className="log-meta">
+                              {ev.steps} steps · {ev.totalTokens?.toLocaleString()} tok
+                            </span>
                           </div>
-                          <div style={{ whiteSpace: 'pre-wrap' }}>{ev.summary}</div>
-                          <div className="export-actions-row">
+                          <div className="log-summary-content">{ev.summary}</div>
+                          <div className="log-export-row">
                             <button
-                              className="btn-export-pill"
+                              className="btn-log-export"
                               onClick={async () => {
                                 const res = await window.api?.export.saveToFile({
                                   content: ev.summary,
@@ -517,10 +747,10 @@ export function App(): React.JSX.Element {
                               }}
                               title="Export summary as Markdown file"
                             >
-                              Export Markdown
+                              Export .md
                             </button>
                             <button
-                              className="btn-export-pill"
+                              className="btn-log-export"
                               onClick={async () => {
                                 const res = await window.api?.export.saveToFile({
                                   content: JSON.stringify(
@@ -537,10 +767,10 @@ export function App(): React.JSX.Element {
                               }}
                               title="Export summary as JSON"
                             >
-                              Export JSON
+                              Export .json
                             </button>
                             <button
-                              className="btn-export-pill"
+                              className="btn-log-export"
                               onClick={async () => {
                                 const res = await window.api?.export.saveToFile({
                                   content: ev.summary,
@@ -553,23 +783,28 @@ export function App(): React.JSX.Element {
                               }}
                               title="Export summary as Plain Text"
                             >
-                              Export Text
+                              Export .txt
                             </button>
                           </div>
                         </div>
                       )
                     case 'error':
                       return (
-                        <div key={i} className="event-card error">
-                          <div className="event-header">⚠️ Error</div>
-                          <div>{ev.message}</div>
-                          {ev.hint && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{ev.hint}</div>}
+                        <div key={i} className="log-entry error">
+                          <div className="log-entry-header">
+                            <span className="log-tag error">ERROR</span>
+                          </div>
+                          <div className="log-error-text">{ev.message}</div>
+                          {ev.hint && <div className="log-error-hint">{ev.hint}</div>}
                         </div>
                       )
                     case 'cancelled':
                       return (
-                        <div key={i} className="event-card">
-                          <div className="event-header">⏹ Cancelled by user</div>
+                        <div key={i} className="log-entry">
+                          <div className="log-entry-header">
+                            <span className="log-tag">ABORTED</span>
+                          </div>
+                          <div style={{ color: '#71717a', fontSize: 11 }}>Task stopped by user.</div>
                         </div>
                       )
                     default:
@@ -584,7 +819,9 @@ export function App(): React.JSX.Element {
             {activeConfirmation && (
               <div className="confirmation-banner">
                 <div className="confirmation-header">
-                  <span className="confirmation-badge">🛡️ Safeguard Alert</span>
+                  <span className="confirmation-badge">
+                    <IconShield size={11} /> SECURITY CHECK
+                  </span>
                   <span className="confirmation-title">{activeConfirmation.title}</span>
                 </div>
                 <div className="confirmation-desc">{activeConfirmation.description}</div>
@@ -595,41 +832,49 @@ export function App(): React.JSX.Element {
                 )}
                 <div className="confirmation-actions">
                   <button className="btn-approve" onClick={handleApprove}>
-                    ✓ Approve Action
+                    Authorize Action
                   </button>
                   <button className="btn-deny" onClick={handleDeny}>
-                    ✕ Deny (Block)
+                    Reject
                   </button>
                 </div>
               </div>
             )}
 
+            {/* Terminal Command Input Footer */}
             <div className="sidebar-footer">
-              <textarea
-                className="task-textarea"
-                placeholder="What should the agent do? (e.g. 'Search for recent AI news and summarize the top article')"
-                value={taskPrompt}
-                disabled={agentStatus === 'running'}
-                onChange={(e) => setTaskPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    void handleRunAgent()
-                  }
-                }}
-              />
-              <div className="action-buttons">
+              <div className="terminal-input-wrapper">
+                <div className="terminal-input-prefix">&gt;</div>
+                <textarea
+                  ref={textareaRef}
+                  className="terminal-textarea"
+                  placeholder="Enter instruction (e.g., 'Extract all pricing tiers from this page and export to CSV')..."
+                  value={taskPrompt}
+                  disabled={agentStatus === 'running'}
+                  onChange={(e) => setTaskPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      void handleRunAgent()
+                    }
+                  }}
+                />
+              </div>
+              <div className="terminal-footer-actions">
+                <span className="terminal-kbd-hint">
+                  <kbd>↵</kbd> run • <kbd>Shift</kbd>+<kbd>↵</kbd> newline
+                </span>
                 {agentStatus === 'running' ? (
-                  <button className="btn-cancel" onClick={handleCancelAgent}>
-                    Stop
+                  <button className="btn-term-stop" onClick={handleCancelAgent}>
+                    <IconStop size={12} /> Abort
                   </button>
                 ) : (
                   <button
-                    className="btn-primary"
+                    className="btn-term-run"
                     disabled={!taskPrompt.trim()}
-                    onClick={handleRunAgent}
+                    onClick={() => handleRunAgent()}
                   >
-                    Run Agent
+                    <IconPlay size={11} /> Run
                   </button>
                 )}
               </div>
@@ -640,4 +885,3 @@ export function App(): React.JSX.Element {
     </div>
   )
 }
-
