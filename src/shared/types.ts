@@ -45,6 +45,7 @@ export type AgentEvent =
       action: string
       target?: string
     }
-  | { type: 'done'; summary: string; steps: number }
+  | { type: 'usage'; prompt: number; completion: number; total: number; step: number }
+  | { type: 'done'; summary: string; steps: number; totalTokens?: number }
   | { type: 'error'; message: string; hint?: string }
   | { type: 'cancelled' }

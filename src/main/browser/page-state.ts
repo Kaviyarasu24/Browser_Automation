@@ -30,8 +30,8 @@ export interface PageState {
   truncatedElements: boolean
 }
 
-const MAX_TEXT_CHARS = 6000
-const MAX_ELEMENTS = 120
+const MAX_TEXT_CHARS = 2800
+const MAX_ELEMENTS = 75
 
 /**
  * Runs in the page. Must be a self-contained expression — no closures over
@@ -85,6 +85,21 @@ const EXTRACT_SCRIPT = `(() => {
 
   const all = Array.from(document.querySelectorAll(selector));
   const visible = all.filter(isVisible).filter((el) => !el.disabled);
+
+  // Prioritize in-viewport and clearly labelled elements to keep token footprint high-value
+  const inView = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.top < window.innerHeight && r.bottom > 0 && r.left < window.innerWidth && r.right > 0;
+  };
+
+  visible.sort((a, b) => {
+    const aV = inView(a) ? 1 : 0;
+    const bV = inView(b) ? 1 : 0;
+    if (aV !== bV) return bV - aV;
+    const aL = (labelFor(a) || '').length > 0 ? 1 : 0;
+    const bL = (labelFor(b) || '').length > 0 ? 1 : 0;
+    return bL - aL;
+  });
 
   const elements = visible.slice(0, MAX_ELS).map((el, index) => {
     const rect = el.getBoundingClientRect();

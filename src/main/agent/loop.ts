@@ -29,19 +29,18 @@ import type { AgentEvent } from '../../shared/types.js'
 
 const MAX_STEPS = 25
 
-const SYSTEM_PROMPT = `You are a browser automation agent operating a real browser on the user's behalf. The browser has the user's own logged-in sessions — they are already signed in to their accounts. Never ask the user to log in or provide credentials; if a site shows a login wall, use the existing session or report that you cannot proceed.
+const SYSTEM_PROMPT = `You are an ultra-fast, efficient browser automation agent operating a real browser on the user's behalf. The browser has the user's own logged-in sessions. Never ask the user to log in or provide credentials.
 
-How to work:
-1. Start by calling read_page to see where you are.
-2. Take ONE action at a time, then call read_page again before deciding the next action. Pages change after clicks and navigations, and element indices from a previous read are then wrong.
-3. Refer to elements by the index shown in the most recent read_page output.
-4. If an index is rejected as out of range, call read_page and pick the right index from the fresh list.
-5. When the goal is met, call done with the actual result — the real text or data you found, not a description of what you did.
+How to work with maximum efficiency:
+1. Navigate directly to relevant domains or search URLs (e.g. https://www.google.com/search?q=... or https://cricbuzz.com) instead of searching multiple intermediate portals.
+2. Both navigate, click, and search typing automatically return the fresh page state and interactive elements. Do NOT waste a step calling read_page immediately after navigate or click.
+3. Refer to elements by the index shown in the most recent page snapshot.
+4. Only call read_page if you explicitly scrolled or need a fresh re-inspection.
+5. When the goal is met, call done immediately with the real answer and findings.
 
 Rules:
-- Do not invent a result. If you could not find or achieve something, say so plainly via done with success=false.
-- Do not repeat an action that just failed. Try a different approach, or report the blocker.
-- Do not ask the user for permission in your text output; you are in an automated loop and they may not be watching. Use done to report, or act.
+- Aim to finish tasks in the fewest possible steps.
+- Do not repeat an action that just failed. Try an alternate path or report the blocker.
 - Keep your non-tool text brief. The action log is what the user reads.`
 
 export interface RunOptions {
@@ -106,6 +105,9 @@ export async function runAgent(opts: RunOptions): Promise<void> {
   ]
 
   let step = 0
+  let cumulativePrompt = 0
+  let cumulativeCompletion = 0
+  let cumulativeTotal = 0
 
   try {
     for (step = 1; step <= MAX_STEPS; step++) {
@@ -116,6 +118,19 @@ export async function runAgent(opts: RunOptions): Promise<void> {
 
       const result = await complete(cfg, messages, BROWSER_TOOLS, signal)
 
+      if (result.usage) {
+        cumulativePrompt += result.usage.prompt
+        cumulativeCompletion += result.usage.completion
+        cumulativeTotal += result.usage.total
+        emit({
+          type: 'usage',
+          prompt: cumulativePrompt,
+          completion: cumulativeCompletion,
+          total: cumulativeTotal,
+          step
+        })
+      }
+
       if (result.content.trim()) {
         emit({ type: 'thinking', step, text: result.content.trim() })
       }
@@ -125,7 +140,7 @@ export async function runAgent(opts: RunOptions): Promise<void> {
       // tool call that never comes.
       if (result.toolCalls.length === 0) {
         const prose = result.content.trim() || '(the model returned no text)'
-        emit({ type: 'done', summary: prose, steps: step })
+        emit({ type: 'done', summary: prose, steps: step, totalTokens: cumulativeTotal })
         return
       }
 
@@ -154,25 +169,27 @@ export async function runAgent(opts: RunOptions): Promise<void> {
           step
         )
 
+        messages.push(toolMessage(call, JSON.stringify(outcome.result)))
+        pruneHistorySnapshots(messages)
+
         // `done` ends the run immediately.
         if (outcome.done) {
-          messages.push(toolMessage(call, JSON.stringify(outcome.result)))
           emit({
             type: 'done',
             summary: outcome.done.summary,
-            steps: step
+            steps: step,
+            totalTokens: cumulativeTotal
           })
           return
         }
-
-        messages.push(toolMessage(call, JSON.stringify(outcome.result)))
       }
     }
 
     emit({
       type: 'done',
       summary: `Stopped after the ${MAX_STEPS}-step limit without finishing. Last known state: the agent was still working on: ${task}`,
-      steps: MAX_STEPS
+      steps: MAX_STEPS,
+      totalTokens: cumulativeTotal
     })
   } catch (err) {
     if (signal.aborted || (err as Error).name === 'AbortError') {
@@ -227,6 +244,38 @@ function parseArgs(
 
 function toolMessage(call: ToolCall, content: string): ChatMessage {
   return { role: 'tool', tool_call_id: call.id, name: call.function.name, content }
+}
+
+/**
+ * Keeps only the single most recent page snapshot in conversation history.
+ * Collapses all prior snapshots into a compact placeholder, saving ~70% of tokens.
+ */
+function pruneHistorySnapshots(messages: ChatMessage[]): void {
+  let lastSnapshotIndex = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg?.role === 'tool' && typeof msg.content === 'string' && msg.content.includes('"page":')) {
+      lastSnapshotIndex = i
+      break
+    }
+  }
+
+  if (lastSnapshotIndex <= 0) return
+
+  for (let i = 0; i < lastSnapshotIndex; i++) {
+    const msg = messages[i]
+    if (msg?.role === 'tool' && typeof msg.content === 'string' && msg.content.includes('"page":')) {
+      try {
+        const parsed = JSON.parse(msg.content)
+        if (parsed && parsed.page) {
+          parsed.page = '[Previous page snapshot collapsed to save tokens; current active page is in the latest step]'
+          msg.content = JSON.stringify(parsed)
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }
 }
 
 interface ToolOutcome {
@@ -322,7 +371,13 @@ async function executeTool(
         await wc.loadURL(target).catch((err: Error) => {
           throw new Error(`navigation failed: ${err.message}`)
         })
-        return report({ ok: true, summary: `Navigated to ${target}.` }, { url: target })
+        await new Promise((r) => setTimeout(r, 450))
+        const stateAfterNav = await capturePageState(wc)
+        const pageAfterNav = formatPageState(stateAfterNav)
+        return report(
+          { ok: true, summary: `Navigated to ${target}. Automatically loaded ${stateAfterNav.elements.length} interactive elements.` },
+          { url: target, page: pageAfterNav }
+        )
       }
 
       case 'click': {
@@ -349,7 +404,16 @@ async function executeTool(
           }
         }
 
-        return report(await clickElement(wc, index))
+        const clickRes = await clickElement(wc, index)
+        if (!clickRes.ok) return report(clickRes)
+
+        await new Promise((r) => setTimeout(r, 350))
+        const stateAfterClick = await capturePageState(wc)
+        const pageAfterClick = formatPageState(stateAfterClick)
+        return report(
+          { ok: true, summary: `${clickRes.summary} Updated page has ${stateAfterClick.elements.length} interactive elements.` },
+          { page: pageAfterClick }
+        )
       }
 
       case 'type': {
@@ -379,7 +443,19 @@ async function executeTool(
         }
 
         const submit = args.submit === true
-        return report(await typeInto(wc, index, text, submit))
+        const typeRes = await typeInto(wc, index, text, submit)
+        if (!typeRes.ok) return report(typeRes)
+
+        if (submit) {
+          await new Promise((r) => setTimeout(r, 450))
+          const stateAfterSubmit = await capturePageState(wc)
+          const pageAfterSubmit = formatPageState(stateAfterSubmit)
+          return report(
+            { ok: true, summary: `${typeRes.summary} Submitted. Loaded ${stateAfterSubmit.elements.length} elements.` },
+            { page: pageAfterSubmit }
+          )
+        }
+        return report(typeRes)
       }
 
       case 'scroll': {

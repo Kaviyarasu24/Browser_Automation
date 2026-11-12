@@ -10,6 +10,7 @@ Because it runs inside your genuine desktop session with stored cookies and loca
 
 ## ✨ Features
 
+- **Speed & Token Optimization Suite**: Auto-reads updated DOM snapshots on navigations and clicks to cut steps in half, prunes historical DOM snapshots from conversation history to reduce tokens by ~70%, and displays a live token counter in the sidebar.
 - **Persistent Real-User Sessions**: Uses Electron's persistent storage partition (`persist:strawberry`) and a desktop Chrome User-Agent string. Your logins, cookies, and local storage persist across sessions and app restarts.
 - **Always-Active Virtual Mouse**: A high-visibility on-screen cursor that stays active throughout the entire agent run. A background watchdog guarantees the cursor never disappears across page navigations, redirects, or SPA route transitions.
 - **CSP & Trusted Types Immune**: Built using safe programmatic DOM & SVG node construction inside a Shadow Root (`attachShadow`), rendering reliably on strict sites (e.g., Google, Cricbuzz) without being blocked by Content Security Policy.

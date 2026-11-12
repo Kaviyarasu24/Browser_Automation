@@ -18,6 +18,11 @@ export function App(): React.JSX.Element {
     action: string
     target?: string
   } | null>(null)
+  const [tokenStats, setTokenStats] = useState<{
+    prompt: number
+    completion: number
+    total: number
+  } | null>(null)
 
   const contentRef = useRef<HTMLDivElement>(null)
   const feedEndRef = useRef<HTMLDivElement>(null)
@@ -77,6 +82,13 @@ export function App(): React.JSX.Element {
       if (event.type === 'start') {
         setAgentStatus('running')
         setActiveConfirmation(null)
+        setTokenStats(null)
+      } else if (event.type === 'usage') {
+        setTokenStats({
+          prompt: event.prompt,
+          completion: event.completion,
+          total: event.total
+        })
       } else if (event.type === 'navigating') {
         // Animate URL typing into address bar at 2x speed
         let typed = ''
@@ -282,6 +294,14 @@ export function App(): React.JSX.Element {
 
             <div className="sidebar-model-info">
               <span>Model: <strong className="model-name">{config?.model || 'not set'}</strong></span>
+              {tokenStats && (
+                <span
+                  className="token-counter-pill"
+                  title={`Prompt: ${tokenStats.prompt.toLocaleString()} | Output: ${tokenStats.completion.toLocaleString()}`}
+                >
+                  ⚡ {(tokenStats.total / 1000).toFixed(1)}k tok
+                </span>
+              )}
               <button className="btn-ping" onClick={handlePing}>
                 {pingStatus || 'Test API'}
               </button>
@@ -352,7 +372,14 @@ export function App(): React.JSX.Element {
                     case 'done':
                       return (
                         <div key={i} className="event-card done">
-                          <div className="event-header">🎉 Completed in {ev.steps} steps</div>
+                          <div className="event-header">
+                            <span>🎉 Completed in {ev.steps} steps</span>
+                            {ev.totalTokens && (
+                              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                                {ev.totalTokens.toLocaleString()} tokens
+                              </span>
+                            )}
+                          </div>
                           <div style={{ whiteSpace: 'pre-wrap' }}>{ev.summary}</div>
                         </div>
                       )

@@ -24,7 +24,7 @@ export const BROWSER_TOOLS: ToolDef[] = [
     function: {
       name: 'read_page',
       description:
-        'Read the current page: URL, title, numbered interactive elements, and visible text. Call this after every navigation, click, or scroll — element indices change whenever the page changes, so an index from an earlier step may point at a different element now. Also call it when you are unsure what happened after an action.',
+        'Explicitly re-read the active page: URL, title, numbered interactive elements, and visible text. Use this when you need fresh element indices after scrolling, or when you are unsure what changed.',
       parameters: { type: 'object', properties: {}, required: [] }
     }
   },
@@ -33,7 +33,7 @@ export const BROWSER_TOOLS: ToolDef[] = [
     function: {
       name: 'navigate',
       description:
-        'Navigate the active tab to a URL. Use a full URL including https://. This replaces the current page. After navigating, call read_page to see the new content.',
+        'Navigate the active tab to a URL (e.g. direct domain or search URL https://www.google.com/search?q=...). Automatically returns the fresh page state and elements — you do NOT need to call read_page after navigate.',
       parameters: {
         type: 'object',
         properties: {
@@ -48,13 +48,13 @@ export const BROWSER_TOOLS: ToolDef[] = [
     function: {
       name: 'click',
       description:
-        'Click an interactive element by its index from the most recent read_page output. Scrolls the element into view automatically if needed. After clicking, call read_page — pages usually change.',
+        'Click an interactive element by its index from the most recent page snapshot. Scrolls element into view automatically and returns the updated page state — you do NOT need to call read_page after click.',
       parameters: {
         type: 'object',
         properties: {
           index: {
             type: 'integer',
-            description: 'Element index from the most recent read_page output.'
+            description: 'Element index from the most recent page snapshot.'
           },
           reason: {
             type: 'string',
