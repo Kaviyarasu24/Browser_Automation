@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AgentEvent, ContentBounds, PublicConfig, TabState } from '../shared/types.js'
+import type { AgentEvent, ContentBounds, DownloadRecord, PublicConfig, TabState } from '../shared/types.js'
 
 export interface StrawberryApi {
   tabs: {
@@ -23,6 +23,21 @@ export interface StrawberryApi {
     cancel: () => Promise<{ ok: boolean }>
     confirm: (id: string, approved: boolean) => Promise<{ ok: boolean }>
     onEvent: (callback: (event: AgentEvent) => void) => () => void
+  }
+  downloads: {
+    list: () => Promise<DownloadRecord[]>
+    openFile: (path: string) => Promise<boolean>
+    showInFolder: (path: string) => Promise<void>
+    onUpdated: (callback: (records: DownloadRecord[]) => void) => () => void
+  }
+  export: {
+    saveToFile: (data: { content: string; filename?: string; format?: string }) => Promise<{
+      ok: boolean
+      path?: string
+      filename?: string
+      size?: number
+      error?: string
+    }>
   }
 }
 
@@ -63,6 +78,21 @@ const api: StrawberryApi = {
         ipcRenderer.removeListener('agent:event', handler)
       }
     }
+  },
+  downloads: {
+    list: () => ipcRenderer.invoke('downloads:list'),
+    openFile: (path: string) => ipcRenderer.invoke('downloads:openFile', path),
+    showInFolder: (path: string) => ipcRenderer.invoke('downloads:showInFolder', path),
+    onUpdated: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, records: DownloadRecord[]) => callback(records)
+      ipcRenderer.on('downloads:updated', handler)
+      return () => {
+        ipcRenderer.removeListener('downloads:updated', handler)
+      }
+    }
+  },
+  export: {
+    saveToFile: (data) => ipcRenderer.invoke('export:saveToFile', data)
   }
 }
 

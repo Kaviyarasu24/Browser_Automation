@@ -28,6 +28,20 @@ export interface PublicConfig {
   hasApiKey: boolean
 }
 
+/* ── Downloads & Exports ────────────────────────────────────────────── */
+
+export interface DownloadRecord {
+  id: string
+  filename: string
+  savePath: string
+  state: 'progressing' | 'completed' | 'cancelled' | 'interrupted'
+  totalBytes: number
+  receivedBytes: number
+  mimeType: string
+  url: string
+  startTime: number
+}
+
 /* ── Agent ─────────────────────────────────────────────────────────── */
 
 export type AgentEvent =
@@ -44,6 +58,13 @@ export type AgentEvent =
       description: string
       action: string
       target?: string
+    }
+  | {
+      type: 'download'
+      filename: string
+      path: string
+      size: number
+      state: 'started' | 'completed' | 'failed'
     }
   | { type: 'usage'; prompt: number; completion: number; total: number; step: number }
   | { type: 'done'; summary: string; steps: number; totalTokens?: number }

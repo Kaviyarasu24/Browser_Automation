@@ -11,6 +11,7 @@ Because it runs inside your genuine desktop session with stored cookies and loca
 ## ✨ Features
 
 - **Speed & Token Optimization Suite**: Auto-reads updated DOM snapshots on navigations and clicks to cut steps in half, prunes historical DOM snapshots from conversation history to reduce tokens by ~70%, and displays a live token counter in the sidebar.
+- **File Download & Export Manager**: Intercepts browser download events seamlessly to save PDFs, invoices, CSVs, and images straight into `Downloads/Strawberry/` without blocking dialogs. Includes a top-bar downloads popover, file reveal/open actions, and an agent tool (`export_data`) with one-click pills to save reports as Markdown, JSON, CSV, or Text.
 - **Persistent Real-User Sessions**: Uses Electron's persistent storage partition (`persist:strawberry`) and a desktop Chrome User-Agent string. Your logins, cookies, and local storage persist across sessions and app restarts.
 - **Always-Active Virtual Mouse**: A high-visibility on-screen cursor that stays active throughout the entire agent run. A background watchdog guarantees the cursor never disappears across page navigations, redirects, or SPA route transitions.
 - **CSP & Trusted Types Immune**: Built using safe programmatic DOM & SVG node construction inside a Shadow Root (`attachShadow`), rendering reliably on strict sites (e.g., Google, Cricbuzz) without being blocked by Content Security Policy.
@@ -38,6 +39,7 @@ Every action performed by the agent is visually animated through the on-screen c
 | **`scroll`** | Centers cursor, displays floating directional pill (`↓ Scrolling Down (800px)`), and rolls page in smooth wheel steps |
 | **`go_back`** | Glides toward top-left with `← Going Back` badge |
 | **`wait`** | Floats gently in place with a live countdown badge: `⏳ Waiting (Ns)...` |
+| **`export_data`** | Emits file save notification badge (`💾 Saving Data: <filename>`) and saves to disk |
 | **`done`** | Glides to viewport center with a celebratory `🎉 Task Complete!` badge |
 
 ---
@@ -62,6 +64,7 @@ strawberry/
 │   │       ├── session.ts     # Persistent partition & Chrome User-Agent setup
 │   │       ├── tabs.ts        # WebContentsView lifecycle & tab management
 │   │       ├── actions.ts     # Native input event dispatchers & smooth scrolling
+│   │       ├── downloads.ts    # Download interception & data export manager
 │   │       ├── safeguards.ts  # Sensitive action & domain boundary detection
 │   │       ├── page-state.ts  # DOM extraction script for interactive elements
 │   │       └── cursor.ts      # Persistent Shadow-DOM virtual mouse overlay

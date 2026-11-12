@@ -5,6 +5,13 @@ import { getConfig, validateConfig } from './config.js'
 import { TabManager, tabUserAgent } from './browser/tabs.js'
 import { runAgent } from './agent/loop.js'
 import { ping } from './agent/llm.js'
+import {
+  initDownloadManager,
+  listDownloads,
+  openDownloadedFile,
+  showInDownloadFolder,
+  exportDataToFile
+} from './browser/downloads.js'
 import type { ContentBounds, AgentEvent, PublicConfig } from '../shared/types.js'
 
 let mainWindow: BrowserWindow | null = null
@@ -246,12 +253,30 @@ function setupIpc(): void {
     }
     return { ok: false }
   })
+
+  // Downloads & File Exports
+  ipcMain.handle('downloads:list', () => listDownloads())
+  ipcMain.handle('downloads:openFile', (_event, filePath: string) => openDownloadedFile(filePath))
+  ipcMain.handle('downloads:showInFolder', (_event, filePath: string) => {
+    showInDownloadFolder(filePath)
+  })
+  ipcMain.handle(
+    'export:saveToFile',
+    (_event, data: { content: string; filename?: string; format?: string }) => {
+      return exportDataToFile(data.content, data.filename, data.format)
+    }
+  )
 }
 
 /* ── App Lifecycle ─────────────────────────────────────────────────── */
 
 app.whenReady().then(() => {
   setupIpc()
+  initDownloadManager((records) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('downloads:updated', records)
+    }
+  })
   createWindow()
 
   app.on('activate', () => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import type { AgentEvent, ContentBounds, PublicConfig, TabState } from '../../shared/types.js'
+import type { AgentEvent, ContentBounds, DownloadRecord, PublicConfig, TabState } from '../../shared/types.js'
 
 export function App(): React.JSX.Element {
   const [tabs, setTabs] = useState<TabState[]>([])
@@ -11,6 +11,8 @@ export function App(): React.JSX.Element {
   const [agentStatus, setAgentStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [events, setEvents] = useState<AgentEvent[]>([])
   const [pingStatus, setPingStatus] = useState<string | null>(null)
+  const [downloads, setDownloads] = useState<DownloadRecord[]>([])
+  const [showDownloadsDrawer, setShowDownloadsDrawer] = useState(false)
   const [activeConfirmation, setActiveConfirmation] = useState<{
     id: string
     title: string
@@ -125,11 +127,26 @@ export function App(): React.JSX.Element {
       }
     })
 
+    // Listen for downloads
+    window.api?.downloads.list().then(setDownloads).catch(console.error)
+    const unbindDownloads = window.api?.downloads.onUpdated((records) => {
+      setDownloads(records)
+    })
+
     return () => {
       unbindTabs()
       unbindAgent()
+      unbindDownloads?.()
     }
   }, [])
+
+  const formatBytes = (bytes: number): string => {
+    if (!bytes || bytes <= 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
+  }
 
   // Auto-scroll event feed
   useEffect(() => {
@@ -255,6 +272,16 @@ export function App(): React.JSX.Element {
             >
               ↻
             </button>
+            <button
+              className={`btn-icon ${showDownloadsDrawer ? 'active' : ''}`}
+              title="Downloads"
+              onClick={() => setShowDownloadsDrawer((prev) => !prev)}
+            >
+              📥
+              {downloads.some((d) => d.state === 'progressing') && (
+                <span className="download-active-dot" />
+              )}
+            </button>
           </div>
 
           <form className="address-form" onSubmit={handleNavigate}>
@@ -275,6 +302,69 @@ export function App(): React.JSX.Element {
             Strawberry AI
           </button>
         </div>
+
+        {/* Downloads Popover Drawer */}
+        {showDownloadsDrawer && (
+          <div className="downloads-popover">
+            <div className="downloads-popover-header">
+              <span>Downloads ({downloads.length})</span>
+              <button
+                className="btn-icon"
+                style={{ width: 20, height: 20, fontSize: 13 }}
+                onClick={() => setShowDownloadsDrawer(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="downloads-list">
+              {downloads.length === 0 ? (
+                <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
+                  No downloads yet
+                </div>
+              ) : (
+                downloads.map((d) => (
+                  <div key={d.id} className="download-item-card">
+                    <div className="download-item-title" title={d.filename}>
+                      {d.filename}
+                    </div>
+                    <div className="download-item-meta">
+                      <span>{formatBytes(d.totalBytes || d.receivedBytes)}</span>
+                      <span
+                        style={{
+                          textTransform: 'capitalize',
+                          color:
+                            d.state === 'completed'
+                              ? 'var(--success)'
+                              : d.state === 'progressing'
+                                ? 'var(--info)'
+                                : 'var(--error)'
+                        }}
+                      >
+                        {d.state}
+                      </span>
+                    </div>
+                    <div className="download-item-actions">
+                      {d.state === 'completed' && (
+                        <button
+                          className="btn-file-action"
+                          onClick={() => window.api?.downloads.openFile(d.savePath)}
+                        >
+                          Open File
+                        </button>
+                      )}
+                      <button
+                        className="btn-file-action"
+                        onClick={() => window.api?.downloads.showInFolder(d.savePath)}
+                      >
+                        Show in Folder
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Viewport */}
@@ -354,6 +444,37 @@ export function App(): React.JSX.Element {
                           <div>{ev.summary}</div>
                         </div>
                       )
+                    case 'download':
+                      return (
+                        <div key={i} className="event-card download">
+                          <div className="event-header">
+                            <span>📥 Download {ev.state === 'completed' ? '✓' : ev.state === 'started' ? '⏳' : '✕'}</span>
+                            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                              {formatBytes(ev.size)}
+                            </span>
+                          </div>
+                          <div style={{ fontWeight: 600, fontSize: 12, wordBreak: 'break-all' }}>{ev.filename}</div>
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, wordBreak: 'break-all' }}>
+                            {ev.path}
+                          </div>
+                          <div className="download-item-actions" style={{ marginTop: 6 }}>
+                            {ev.state === 'completed' && (
+                              <button
+                                className="btn-file-action"
+                                onClick={() => window.api?.downloads.openFile(ev.path)}
+                              >
+                                Open File
+                              </button>
+                            )}
+                            <button
+                              className="btn-file-action"
+                              onClick={() => window.api?.downloads.showInFolder(ev.path)}
+                            >
+                              Show in Folder
+                            </button>
+                          </div>
+                        </div>
+                      )
                     case 'confirmation_required':
                       return (
                         <div key={i} className="event-card confirmation">
@@ -381,6 +502,60 @@ export function App(): React.JSX.Element {
                             )}
                           </div>
                           <div style={{ whiteSpace: 'pre-wrap' }}>{ev.summary}</div>
+                          <div className="export-actions-row">
+                            <button
+                              className="btn-export-pill"
+                              onClick={async () => {
+                                const res = await window.api?.export.saveToFile({
+                                  content: ev.summary,
+                                  filename: `strawberry-summary-${Date.now()}.md`,
+                                  format: 'markdown'
+                                })
+                                if (res?.ok && res.path) {
+                                  window.api?.downloads.showInFolder(res.path)
+                                }
+                              }}
+                              title="Export summary as Markdown file"
+                            >
+                              Export Markdown
+                            </button>
+                            <button
+                              className="btn-export-pill"
+                              onClick={async () => {
+                                const res = await window.api?.export.saveToFile({
+                                  content: JSON.stringify(
+                                    { summary: ev.summary, steps: ev.steps, totalTokens: ev.totalTokens },
+                                    null,
+                                    2
+                                  ),
+                                  filename: `strawberry-summary-${Date.now()}.json`,
+                                  format: 'json'
+                                })
+                                if (res?.ok && res.path) {
+                                  window.api?.downloads.showInFolder(res.path)
+                                }
+                              }}
+                              title="Export summary as JSON"
+                            >
+                              Export JSON
+                            </button>
+                            <button
+                              className="btn-export-pill"
+                              onClick={async () => {
+                                const res = await window.api?.export.saveToFile({
+                                  content: ev.summary,
+                                  filename: `strawberry-summary-${Date.now()}.txt`,
+                                  format: 'text'
+                                })
+                                if (res?.ok && res.path) {
+                                  window.api?.downloads.showInFolder(res.path)
+                                }
+                              }}
+                              title="Export summary as Plain Text"
+                            >
+                              Export Text
+                            </button>
+                          </div>
                         </div>
                       )
                     case 'error':

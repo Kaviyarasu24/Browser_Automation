@@ -23,6 +23,7 @@ import {
   startCursorHeartbeat,
   stopCursorHeartbeat
 } from '../browser/cursor.js'
+import { exportDataToFile, setOnDownloadComplete } from '../browser/downloads.js'
 import { BROWSER_TOOLS } from './tools.js'
 import { LlmError, complete, type ChatMessage, type ToolCall } from './llm.js'
 import type { AgentEvent } from '../../shared/types.js'
@@ -98,6 +99,17 @@ export async function runAgent(opts: RunOptions): Promise<void> {
   startCursorHeartbeat(wc)
   void animateMouseMove(wc, 350, 250)
   void animateActionBadge(wc, '🍓 Strawberry Agent Active', 2500)
+
+  setOnDownloadComplete((rec) => {
+    emit({
+      type: 'download',
+      filename: rec.filename,
+      path: rec.savePath,
+      size: rec.totalBytes,
+      state: 'completed'
+    })
+    void animateActionBadge(wc, `📥 Downloaded: ${rec.filename}`, 2500)
+  })
 
   const messages: ChatMessage[] = [
     { role: 'system', content: SYSTEM_PROMPT },
@@ -209,6 +221,7 @@ export async function runAgent(opts: RunOptions): Promise<void> {
       hint: `Ran for ${Math.round((Date.now() - started) / 1000)}s over ${step} step(s).`
     })
   } finally {
+    setOnDownloadComplete(null)
     stopCursorHeartbeat()
   }
 }
@@ -491,6 +504,35 @@ async function executeTool(
         return report(
           { ok: true, summary: `Opened ${target} in a background tab.` },
           { url: target }
+        )
+      }
+
+      case 'export_data': {
+        const content = requireString(args, 'content')
+        if (!content) return report({ ok: false, summary: 'export_data requires a "content" string.' })
+        const filename = typeof args.filename === 'string' ? args.filename : undefined
+        const format = typeof args.format === 'string' ? args.format : 'txt'
+
+        const res = exportDataToFile(content, filename, format)
+        if (!res.ok) {
+          return report({ ok: false, summary: `Export failed: ${res.error}` })
+        }
+
+        emit({
+          type: 'download',
+          filename: res.filename!,
+          path: res.path!,
+          size: res.size!,
+          state: 'completed'
+        })
+        void animateActionBadge(wc, `💾 Exported ${res.filename}`, 2500)
+
+        return report(
+          {
+            ok: true,
+            summary: `Successfully saved ${res.filename} (${res.size} bytes) to ${res.path}.`
+          },
+          { path: res.path, filename: res.filename }
         )
       }
 

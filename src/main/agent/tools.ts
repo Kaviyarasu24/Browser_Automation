@@ -161,6 +161,23 @@ export const BROWSER_TOOLS: ToolDef[] = [
   {
     type: 'function',
     function: {
+      name: 'export_data',
+      description:
+        'Save extracted data, tables, reports, or findings directly to a local file in the user\'s Downloads/Strawberry folder. Format can be "csv", "json", "md", or "txt". Use this whenever the user asks to save, download, or export data.',
+      parameters: {
+        type: 'object',
+        properties: {
+          content: { type: 'string', description: 'The text, markdown, CSV table, or JSON content to save.' },
+          filename: { type: 'string', description: 'Suggested filename, e.g. "odi_match_schedule.csv" or "report.md".' },
+          format: { type: 'string', enum: ['csv', 'json', 'md', 'txt'], description: 'File extension/format. Defaults to "txt" or "md".' }
+        },
+        required: ['content']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'done',
       description:
         'Finish the task and report the result. Call this exactly once when the goal is achieved OR when you conclude it cannot be achieved. Do not call it to report progress — only to end the run.',

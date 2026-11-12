@@ -32,10 +32,12 @@ This document tracks upcoming features, architectural improvements, and planned 
 ---
 
 ## 📥 4. File Download & Export Manager
-> **Status: ⏳ Pending**
-- [ ] **Download Interception**: Listen to Electron's `will-download` session events when the agent clicks download buttons (PDFs, CSVs, invoices, images).
-- [ ] **Safe Destination Routing**: Automatically save downloads to the user's `Downloads/Strawberry/` directory without blocking confirmation dialogs.
-- [ ] **File Path Reporting**: Return the absolute path and file size of downloaded files in the agent summary.
+> **Status: ✅ Completed**
+- [x] **Download Interception**: Listen to Electron's `will-download` session events when the agent or user triggers downloads (PDFs, CSVs, invoices, images).
+- [x] **Safe Destination Routing**: Automatically route downloads to isolated `Downloads/Strawberry/` directory with automatic filename collision resolution and zero blocking OS dialogs.
+- [x] **File Path & Size Reporting**: Real-time event notifications (`download`) reporting file path, size, and completion state to both agent context and UI feed.
+- [x] **Downloads Drawer UI**: Top bar downloads popover with progress indicators, Open File, and Show in Folder actions.
+- [x] **Export Agent Results**: Instant export of agent summaries to `.md`, `.json`, `.csv`, `.txt` via `export_data` tool and one-click UI pills.
 
 ---
 
