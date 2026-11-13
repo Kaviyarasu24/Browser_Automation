@@ -1261,64 +1261,48 @@ html, body, #root {
   color: #ffffff;
 }
 
-/* ── Settings Modal Dialog ─────────────────────────────────────────── */
+/* ── Settings Slide-Over Drawer ────────────────────────────────────── */
 
-.settings-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-  animation: fadeIn 0.15s ease-out;
-}
-
-.settings-modal-card {
-  width: 480px;
-  max-width: 92vw;
-  background: #242424;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 14px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8);
+.copilot-settings-drawer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #1f1f1f;
+  z-index: 70;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  animation: scaleUp 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slideInLeft 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
 }
 
-@keyframes scaleUp {
-  from { transform: scale(0.96); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
-}
-
-.settings-modal-header {
-  padding: 16px 20px;
+.settings-drawer-header {
+  height: 48px;
+  padding: 0 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: #222222;
+  flex-shrink: 0;
 }
 
-.settings-modal-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #ffffff;
+.settings-drawer-title-group {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #ffffff;
 }
 
-.settings-modal-body {
-  padding: 20px;
+.settings-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 14px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  overflow-y: auto;
-  max-height: 70vh;
 }
 
 .settings-field-group {
@@ -1414,25 +1398,27 @@ html, body, #root {
   border-color: #38bdf8;
 }
 
-.settings-modal-footer {
-  padding: 14px 20px;
-  background: #202020;
+.settings-model-chip.active {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border-color: #38bdf8;
+}
+
+.settings-drawer-footer {
+  padding: 12px 14px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  background: #1a1a1a;
+  flex-shrink: 0;
 }
 
-.settings-footer-left {
+.settings-drawer-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.settings-footer-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .btn-settings-ping {
@@ -1452,7 +1438,7 @@ html, body, #root {
 }
 
 .btn-settings-cancel {
-  padding: 6px 14px;
+  padding: 6px 12px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;

@@ -68,7 +68,7 @@ export function App(): React.JSX.Element {
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false)
   const [historyItems, setHistoryItems] = useState<TaskHistoryItem[]>([])
-  const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [showSettingsDrawer, setShowSettingsDrawer] = useState(false)
   const [settingsBaseUrl, setSettingsBaseUrl] = useState('')
   const [settingsApiKey, setSettingsApiKey] = useState('')
   const [settingsModel, setSettingsModel] = useState('')
@@ -357,7 +357,7 @@ export function App(): React.JSX.Element {
     setSettingsModel(config?.model || '')
     setShowApiKeyText(false)
     setSettingsPingStatus(null)
-    setShowSettingsModal(true)
+    setShowSettingsDrawer(true)
     setShowMoreMenu(false)
     setShowHistoryDrawer(false)
   }
@@ -372,7 +372,7 @@ export function App(): React.JSX.Element {
       })
       if (res?.ok && res.config) {
         setConfig(res.config)
-        setShowSettingsModal(false)
+        setShowSettingsDrawer(false)
       }
     } finally {
       setSettingsSaving(false)
@@ -678,6 +678,7 @@ export function App(): React.JSX.Element {
                     setSidebarOpen(false)
                     setShowMoreMenu(false)
                     setShowHistoryDrawer(false)
+                    setShowSettingsDrawer(false)
                   }}
                 >
                   <IconClose size={16} />
@@ -846,6 +847,128 @@ export function App(): React.JSX.Element {
                       <IconTrash size={13} /> Clear All
                     </button>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Settings Slide-Over Drawer */}
+            {showSettingsDrawer && (
+              <div className="copilot-settings-drawer">
+                <div className="settings-drawer-header">
+                  <div className="settings-drawer-title-group">
+                    <IconSettings size={16} />
+                    <span>Settings</span>
+                  </div>
+                  <button
+                    className="copilot-header-btn"
+                    title="Close settings"
+                    onClick={() => setShowSettingsDrawer(false)}
+                  >
+                    <IconClose size={16} />
+                  </button>
+                </div>
+
+                <div className="settings-drawer-body">
+                  {/* Base URL */}
+                  <div className="settings-field-group">
+                    <label className="settings-field-label">
+                      <span>API Base URL</span>
+                    </label>
+                    <div className="settings-input-wrapper">
+                      <input
+                        type="text"
+                        className="settings-input"
+                        placeholder="https://openrouter.ai/api/v1"
+                        value={settingsBaseUrl}
+                        onChange={(e) => setSettingsBaseUrl(e.target.value)}
+                      />
+                    </div>
+                    <span className="settings-field-hint">
+                      Supports OpenRouter, OpenAI, Groq, Ollama, vLLM.
+                    </span>
+                  </div>
+
+                  {/* API Key */}
+                  <div className="settings-field-group">
+                    <label className="settings-field-label">
+                      <span>API Key</span>
+                    </label>
+                    <div className="settings-input-wrapper">
+                      <input
+                        type={showApiKeyText ? 'text' : 'password'}
+                        className="settings-input"
+                        placeholder="sk-or-v1-..."
+                        value={settingsApiKey}
+                        onChange={(e) => setSettingsApiKey(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="settings-input-btn"
+                        title={showApiKeyText ? 'Hide API key' : 'Show API key'}
+                        onClick={() => setShowApiKeyText((prev) => !prev)}
+                      >
+                        {showApiKeyText ? <IconEyeOff size={15} /> : <IconEye size={15} />}
+                      </button>
+                    </div>
+                    <span className="settings-field-hint">
+                      Saved locally to .env. Never sent to any third party.
+                    </span>
+                  </div>
+
+                  {/* Model */}
+                  <div className="settings-field-group">
+                    <label className="settings-field-label">
+                      <span>Model Identifier</span>
+                    </label>
+                    <div className="settings-input-wrapper">
+                      <input
+                        type="text"
+                        className="settings-input"
+                        placeholder="nvidia/nemotron-3.5-lightning:free"
+                        value={settingsModel}
+                        onChange={(e) => setSettingsModel(e.target.value)}
+                      />
+                    </div>
+                    <div className="settings-model-chips">
+                      {MODEL_PRESETS.map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          className={`settings-model-chip ${settingsModel === m ? 'active' : ''}`}
+                          onClick={() => setSettingsModel(m)}
+                        >
+                          {m.split('/').pop() || m}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="settings-drawer-footer">
+                  <button
+                    type="button"
+                    className="btn-settings-ping"
+                    onClick={handleSettingsPing}
+                  >
+                    {settingsPingStatus || 'Test Connection'}
+                  </button>
+                  <div className="settings-drawer-actions">
+                    <button
+                      type="button"
+                      className="btn-settings-cancel"
+                      onClick={() => setShowSettingsDrawer(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-settings-save"
+                      disabled={settingsSaving}
+                      onClick={handleSaveSettings}
+                    >
+                      {settingsSaving ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1212,132 +1335,6 @@ export function App(): React.JSX.Element {
           </aside>
         )}
       </div>
-
-      {/* Settings Modal Dialog */}
-      {showSettingsModal && (
-        <div className="settings-modal-backdrop" onClick={() => setShowSettingsModal(false)}>
-          <div className="settings-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="settings-modal-header">
-              <div className="settings-modal-title">
-                <IconSettings size={18} />
-                <span>LLM Configuration & Settings</span>
-              </div>
-              <button
-                className="btn-icon"
-                style={{ width: 26, height: 26 }}
-                onClick={() => setShowSettingsModal(false)}
-              >
-                <IconClose size={14} />
-              </button>
-            </div>
-
-            <div className="settings-modal-body">
-              {/* Base URL */}
-              <div className="settings-field-group">
-                <label className="settings-field-label">
-                  <span>API Base URL</span>
-                </label>
-                <div className="settings-input-wrapper">
-                  <input
-                    type="text"
-                    className="settings-input"
-                    placeholder="https://openrouter.ai/api/v1"
-                    value={settingsBaseUrl}
-                    onChange={(e) => setSettingsBaseUrl(e.target.value)}
-                  />
-                </div>
-                <span className="settings-field-hint">
-                  Supports any OpenAI-compatible API endpoint (OpenRouter, OpenAI, Groq, Ollama, vLLM).
-                </span>
-              </div>
-
-              {/* API Key */}
-              <div className="settings-field-group">
-                <label className="settings-field-label">
-                  <span>API Key</span>
-                </label>
-                <div className="settings-input-wrapper">
-                  <input
-                    type={showApiKeyText ? 'text' : 'password'}
-                    className="settings-input"
-                    placeholder="sk-or-v1-..."
-                    value={settingsApiKey}
-                    onChange={(e) => setSettingsApiKey(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="settings-input-btn"
-                    title={showApiKeyText ? 'Hide API key' : 'Show API key'}
-                    onClick={() => setShowApiKeyText((prev) => !prev)}
-                  >
-                    {showApiKeyText ? <IconEyeOff size={15} /> : <IconEye size={15} />}
-                  </button>
-                </div>
-                <span className="settings-field-hint">
-                  Saved securely to your local configuration (.env). Never transmitted to any third party.
-                </span>
-              </div>
-
-              {/* Model */}
-              <div className="settings-field-group">
-                <label className="settings-field-label">
-                  <span>Model Identifier</span>
-                </label>
-                <div className="settings-input-wrapper">
-                  <input
-                    type="text"
-                    className="settings-input"
-                    placeholder="nvidia/nemotron-3.5-lightning:free"
-                    value={settingsModel}
-                    onChange={(e) => setSettingsModel(e.target.value)}
-                  />
-                </div>
-                <div className="settings-model-chips">
-                  {MODEL_PRESETS.map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      className="settings-model-chip"
-                      onClick={() => setSettingsModel(m)}
-                    >
-                      {m.split('/').pop() || m}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="settings-modal-footer">
-              <div className="settings-footer-left">
-                <button
-                  type="button"
-                  className="btn-settings-ping"
-                  onClick={handleSettingsPing}
-                >
-                  {settingsPingStatus || 'Test Connection'}
-                </button>
-              </div>
-              <div className="settings-footer-right">
-                <button
-                  type="button"
-                  className="btn-settings-cancel"
-                  onClick={() => setShowSettingsModal(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="btn-settings-save"
-                  disabled={settingsSaving}
-                  onClick={handleSaveSettings}
-                >
-                  {settingsSaving ? 'Saving...' : 'Save Settings'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
