@@ -19,17 +19,17 @@ import {
   IconShield,
   IconStar,
   IconSpinner,
-  IconTerminal,
+  IconMenu,
+  IconMoreHorizontal,
+  IconSend,
   IconChevronRight,
-  IconChevronDown,
-  IconPlay
+  IconChevronDown
 } from './components/Icons.js'
 
-const QUICK_COMMANDS = [
-  { label: 'Summarize page content and key findings', text: 'Summarize the main content and key takeaways of this page.' },
-  { label: 'Extract table data and export to CSV', text: 'Extract all data tables on this page and export the results to CSV.' },
-  { label: 'Inspect documentation and outline steps', text: 'Read the documentation on this page and outline step-by-step instructions.' },
-  { label: 'Search current topic for latest updates', text: 'Search for recent news and updates on this topic and summarize.' }
+const COPILOT_SUGGESTIONS = [
+  'Summarize the main points on this page.',
+  'Play a trivia game with me about [topic], asking one question at a time, tracking my score, and explaining each answer after I respond.',
+  'Track the price of a product for me, compare recent changes, and tell me whether it looks like a good time to buy.'
 ]
 
 export function App(): React.JSX.Element {
@@ -45,6 +45,7 @@ export function App(): React.JSX.Element {
   const [agentStatus, setAgentStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [events, setEvents] = useState<AgentEvent[]>([])
   const [expandedThoughts, setExpandedThoughts] = useState<Record<number, boolean>>({})
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [pingStatus, setPingStatus] = useState<string | null>(null)
   const [downloads, setDownloads] = useState<DownloadRecord[]>([])
   const [showDownloadsDrawer, setShowDownloadsDrawer] = useState(false)
@@ -131,7 +132,6 @@ export function App(): React.JSX.Element {
           total: event.total
         })
       } else if (event.type === 'navigating') {
-        // Animate URL typing into address bar at 2x speed
         let typed = ''
         const url = event.url
         const chunk = 2
@@ -197,7 +197,7 @@ export function App(): React.JSX.Element {
     if (!activeTabId || !urlInput.trim()) return
     let target = urlInput.trim()
 
-    // Smart omnibox resolution (like Chrome)
+    // Smart omnibox resolution
     if (!/^https?:\/\//i.test(target) && !target.startsWith('about:')) {
       if (target.includes('.') && !target.includes(' ')) {
         target = `https://${target}`
@@ -237,9 +237,10 @@ export function App(): React.JSX.Element {
   const handleRunAgent = async (promptOverride?: string) => {
     const promptToRun = (promptOverride || taskPrompt).trim()
     if (!promptToRun || agentStatus === 'running') return
-    setTaskPrompt(promptToRun)
+    setTaskPrompt('')
     setEvents([])
     setExpandedThoughts({})
+    setShowMoreMenu(false)
     setAgentStatus('running')
     setSidebarOpen(true)
     const res = await window.api?.agent.run(promptToRun)
@@ -272,7 +273,7 @@ export function App(): React.JSX.Element {
   const handlePing = async () => {
     setPingStatus('Testing...')
     const res = await window.api?.config.ping()
-    setPingStatus(res ? (res.ok ? '✓ OK' : `✕ Err`) : 'Failed')
+    setPingStatus(res ? (res.ok ? '✓ Connected' : `✕ ${res.detail}`) : 'Failed')
     setTimeout(() => setPingStatus(null), 3000)
   }
 
@@ -434,12 +435,11 @@ export function App(): React.JSX.Element {
 
             <button
               className={`btn-agent-toggle ${sidebarOpen ? 'active' : ''}`}
-              title="Toggle Agent Console"
+              title="Toggle Copilot"
               onClick={() => setSidebarOpen((prev) => !prev)}
             >
-              <IconTerminal size={14} />
               <span className={`agent-dot ${agentStatus === 'running' ? 'running' : ''}`} />
-              <span>Console</span>
+              <span>Copilot</span>
             </button>
           </div>
         </div>
@@ -531,324 +531,409 @@ export function App(): React.JSX.Element {
         {/* Placeholder container where TabManager positions active WebContentsView */}
         <div className="web-content-placeholder" ref={contentRef} />
 
-        {/* Professional Developer Agent Console */}
+        {/* Microsoft Edge Copilot Style Side Panel */}
         {sidebarOpen && (
           <aside className="sidebar">
-            <div className="sidebar-header">
-              <div className="sidebar-title-group">
-                <IconTerminal size={15} className="sidebar-term-icon" />
-                <span className="sidebar-title">Agent Console</span>
-                <span className={`status-badge ${agentStatus}`}>{agentStatus}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                {events.length > 0 && (
-                  <button
-                    className="btn-icon"
-                    style={{ width: 24, height: 24, fontSize: 11 }}
-                    title="Clear console output"
-                    onClick={() => {
-                      setEvents([])
-                      setExpandedThoughts({})
-                    }}
-                  >
-                    Clear
-                  </button>
-                )}
+            {/* Top Bar (Hamburger, Ellipsis, Close) */}
+            <div className="copilot-header">
+              <button
+                className="copilot-header-btn"
+                title="Menu"
+                onClick={() => setShowMoreMenu((prev) => !prev)}
+              >
+                <IconMenu size={18} />
+              </button>
+
+              <div className="copilot-header-actions">
                 <button
-                  className="btn-icon"
-                  style={{ width: 24, height: 24 }}
-                  title="Close console"
-                  onClick={() => setSidebarOpen(false)}
+                  className="copilot-header-btn"
+                  title="More options"
+                  onClick={() => setShowMoreMenu((prev) => !prev)}
                 >
-                  <IconClose size={13} />
+                  <IconMoreHorizontal size={18} />
                 </button>
-              </div>
-            </div>
+                <button
+                  className="copilot-header-btn"
+                  title="Close panel"
+                  onClick={() => {
+                    setSidebarOpen(false)
+                    setShowMoreMenu(false)
+                  }}
+                >
+                  <IconClose size={16} />
+                </button>
 
-            <div className="sidebar-model-info">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span>TARGET:</span>
-                <strong className="model-name">{config?.model || 'default'}</strong>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {tokenStats && (
-                  <span
-                    className="token-counter-pill"
-                    title={`Prompt: ${tokenStats.prompt.toLocaleString()} | Completion: ${tokenStats.completion.toLocaleString()}`}
-                  >
-                    {tokenStats.total.toLocaleString()} tok
-                  </span>
+                {/* More Options Dropdown */}
+                {showMoreMenu && (
+                  <div className="copilot-menu-popover">
+                    <button
+                      className="copilot-menu-item"
+                      onClick={() => {
+                        setEvents([])
+                        setExpandedThoughts({})
+                        setShowMoreMenu(false)
+                      }}
+                    >
+                      <span>New topic</span>
+                      <span style={{ fontSize: 10, color: '#888' }}>Clear</span>
+                    </button>
+                    <div className="copilot-menu-divider" />
+                    <div className="copilot-menu-item" style={{ cursor: 'default' }}>
+                      <span style={{ color: '#888' }}>Model:</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                        {config?.model || 'default'}
+                      </span>
+                    </div>
+                    {tokenStats && (
+                      <div className="copilot-menu-item" style={{ cursor: 'default' }}>
+                        <span style={{ color: '#888' }}>Usage:</span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                          {(tokenStats.total / 1000).toFixed(1)}k tok
+                        </span>
+                      </div>
+                    )}
+                    <button
+                      className="copilot-menu-item"
+                      onClick={() => {
+                        void handlePing()
+                      }}
+                    >
+                      <span>Test Connection</span>
+                      <span style={{ fontSize: 10, color: 'var(--success)' }}>
+                        {pingStatus || 'Ping'}
+                      </span>
+                    </button>
+                  </div>
                 )}
-                <button className="btn-ping" onClick={handlePing}>
-                  {pingStatus || 'Ping'}
-                </button>
               </div>
             </div>
 
-            <div className="event-feed">
+            {/* Scrollable Conversation Content */}
+            <div className="copilot-content">
               {events.length === 0 ? (
-                <div className="console-empty-state">
-                  <div className="console-empty-icon">
-                    <IconTerminal size={20} />
-                  </div>
-                  <div className="console-empty-title">Ready for instructions</div>
-                  <div className="console-empty-subtitle">
-                    Enter a task command below to control this browser session autonomously.
-                  </div>
-                  <div className="console-templates-list">
-                    <div className="console-templates-header">Quick Commands</div>
-                    {QUICK_COMMANDS.map((cmd, idx) => (
-                      <button
+                /* Hero Greeting Screen (Matches User's Reference Screenshot Exactly) */
+                <div className="copilot-hero">
+                  <h1 className="copilot-greeting">Hi, how can I help?</h1>
+                  <p className="copilot-subtitle">
+                    I'm here to help when you need me. Tell me what you're working on, and we can get started.
+                  </p>
+
+                  <div className="copilot-suggestions">
+                    {COPILOT_SUGGESTIONS.map((suggestion, idx) => (
+                      <div
                         key={idx}
-                        className="console-template-item"
+                        className="copilot-suggestion-card"
                         onClick={() => {
-                          setTaskPrompt(cmd.text)
-                          textareaRef.current?.focus()
+                          void handleRunAgent(suggestion)
                         }}
                       >
-                        <span className="template-prefix">$</span>
-                        <span className="template-label">{cmd.label}</span>
-                      </button>
+                        {suggestion}
+                      </div>
                     ))}
                   </div>
                 </div>
               ) : (
-                events.map((ev, i) => {
-                  switch (ev.type) {
-                    case 'start':
-                      return (
-                        <div key={i} className="log-entry start">
-                          <div className="log-entry-header">
-                            <span className="log-tag">INIT</span>
-                            <span className="log-meta">TASK</span>
+                /* Active Conversation Stream */
+                <div className="copilot-feed">
+                  {events.map((ev, i) => {
+                    switch (ev.type) {
+                      case 'start':
+                        return (
+                          <div key={i} className="user-message-bubble">
+                            {ev.task}
                           </div>
-                          <div className="log-entry-body">{ev.task}</div>
-                        </div>
-                      )
-                    case 'navigating':
-                      return (
-                        <div key={i} className="log-entry nav">
-                          <div className="log-entry-header">
-                            <span className="log-tag nav">NAVIGATE</span>
-                            <span className="log-meta">HTTP</span>
-                          </div>
-                          <div className="log-url-box">{ev.url}</div>
-                        </div>
-                      )
-                    case 'thinking': {
-                      const isExpanded = expandedThoughts[ev.step] ?? false
-                      return (
-                        <div key={i} className="log-entry thinking">
-                          <button
-                            type="button"
-                            className="log-disclosure-btn"
-                            onClick={() =>
-                              setExpandedThoughts((prev) => ({ ...prev, [ev.step]: !isExpanded }))
-                            }
-                          >
-                            {isExpanded ? <IconChevronDown size={13} /> : <IconChevronRight size={13} />}
-                            <span>Reasoning (Step {ev.step})</span>
-                          </button>
-                          {isExpanded && (
-                            <div className="log-thought-content">{ev.text}</div>
-                          )}
-                        </div>
-                      )
-                    }
-                    case 'tool':
-                      return (
-                        <div key={i} className="log-entry tool">
-                          <div className="log-entry-header">
-                            <span className="log-tag tool">STEP {ev.step}</span>
-                            <span className="log-tool-name">{ev.name}</span>
-                          </div>
-                          <pre className="log-code-block">{JSON.stringify(ev.args, null, 2)}</pre>
-                        </div>
-                      )
-                    case 'result':
-                      return (
-                        <div key={i} className="log-entry result">
-                          <div className="log-entry-header">
-                            <span className={`log-tag ${ev.ok ? 'success' : 'fail'}`}>
-                              {ev.ok ? '✓ OK' : '✕ FAILED'}
-                            </span>
-                            <span className="log-meta">{ev.name}</span>
-                          </div>
-                          <div className="log-entry-body">{ev.summary}</div>
-                        </div>
-                      )
-                    case 'download':
-                      return (
-                        <div key={i} className="log-entry download">
-                          <div className="log-entry-header">
-                            <span className="log-tag info">DOWNLOAD</span>
-                            <span className="log-meta">{formatBytes(ev.size)}</span>
-                          </div>
-                          <div className="log-file-name">{ev.filename}</div>
-                          <div className="log-file-path">{ev.path}</div>
-                          <div className="log-actions-row">
-                            {ev.state === 'completed' && (
-                              <button
-                                className="btn-log-action"
-                                onClick={() => window.api?.downloads.openFile(ev.path)}
+                        )
+                      case 'navigating':
+                        return (
+                          <div key={i} className="assistant-response-container">
+                            <div className="assistant-step-card">
+                              <div className="assistant-step-header">
+                                <span className="assistant-step-badge">Navigating</span>
+                              </div>
+                              <div
+                                style={{
+                                  wordBreak: 'break-all',
+                                  fontFamily: 'var(--font-mono)',
+                                  fontSize: 11,
+                                  color: 'var(--accent)'
+                                }}
                               >
-                                <IconFile size={12} /> Open
-                              </button>
-                            )}
-                            <button
-                              className="btn-log-action"
-                              onClick={() => window.api?.downloads.showInFolder(ev.path)}
-                            >
-                              <IconFolder size={12} /> Reveal
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    case 'confirmation_required':
-                      return (
-                        <div key={i} className="log-entry security">
-                          <div className="log-entry-header">
-                            <span className="log-tag warning">
-                              <IconShield size={11} /> SECURITY CHECK
-                            </span>
-                            <span className="log-meta">Authorization Required</span>
-                          </div>
-                          <div className="log-security-title">{ev.title}</div>
-                          <div className="log-entry-body">{ev.description}</div>
-                          {ev.target && (
-                            <div className="log-security-target">
-                              Target: <code>{ev.target}</code>
+                                {ev.url}
+                              </div>
                             </div>
-                          )}
-                        </div>
-                      )
-                    case 'done':
-                      return (
-                        <div key={i} className="log-entry done">
-                          <div className="log-entry-header">
-                            <span className="log-tag success">COMPLETE</span>
-                            <span className="log-meta">
-                              {ev.steps} steps · {ev.totalTokens?.toLocaleString()} tok
-                            </span>
                           </div>
-                          <div className="log-summary-content">{ev.summary}</div>
-                          <div className="log-export-row">
+                        )
+                      case 'thinking': {
+                        const isExpanded = expandedThoughts[ev.step] ?? false
+                        return (
+                          <div key={i} className="assistant-response-container">
                             <button
-                              className="btn-log-export"
-                              onClick={async () => {
-                                const res = await window.api?.export.saveToFile({
-                                  content: ev.summary,
-                                  filename: `strawberry-summary-${Date.now()}.md`,
-                                  format: 'markdown'
-                                })
-                                if (res?.ok && res.path) {
-                                  window.api?.downloads.showInFolder(res.path)
-                                }
-                              }}
-                              title="Export summary as Markdown file"
+                              type="button"
+                              className="copilot-thought-btn"
+                              onClick={() =>
+                                setExpandedThoughts((prev) => ({
+                                  ...prev,
+                                  [ev.step]: !isExpanded
+                                }))
+                              }
                             >
-                              Export .md
+                              {isExpanded ? <IconChevronDown size={13} /> : <IconChevronRight size={13} />}
+                              <span>Reasoning (Step {ev.step})</span>
                             </button>
-                            <button
-                              className="btn-log-export"
-                              onClick={async () => {
-                                const res = await window.api?.export.saveToFile({
-                                  content: JSON.stringify(
-                                    { summary: ev.summary, steps: ev.steps, totalTokens: ev.totalTokens },
-                                    null,
-                                    2
-                                  ),
-                                  filename: `strawberry-summary-${Date.now()}.json`,
-                                  format: 'json'
-                                })
-                                if (res?.ok && res.path) {
-                                  window.api?.downloads.showInFolder(res.path)
-                                }
+                            {isExpanded && (
+                              <div className="copilot-thought-content">{ev.text}</div>
+                            )}
+                          </div>
+                        )
+                      }
+                      case 'tool':
+                        return (
+                          <div key={i} className="assistant-response-container">
+                            <div className="assistant-step-card">
+                              <div className="assistant-step-header">
+                                <span className="assistant-step-badge">Step {ev.step}</span>
+                                <span style={{ fontFamily: 'var(--font-mono)', color: '#fff' }}>
+                                  {ev.name}
+                                </span>
+                              </div>
+                              <pre className="copilot-code-block">{JSON.stringify(ev.args, null, 2)}</pre>
+                            </div>
+                          </div>
+                        )
+                      case 'result':
+                        return (
+                          <div key={i} className="assistant-response-container">
+                            <div className="assistant-step-card">
+                              <div className="assistant-step-header">
+                                <span
+                                  className="assistant-step-badge"
+                                  style={{
+                                    color: ev.ok ? 'var(--success)' : 'var(--error)',
+                                    background: ev.ok ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)'
+                                  }}
+                                >
+                                  {ev.ok ? '✓ Action Completed' : '✕ Action Failed'}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 12.5, color: '#e5e5e5' }}>{ev.summary}</div>
+                            </div>
+                          </div>
+                        )
+                      case 'download':
+                        return (
+                          <div key={i} className="assistant-response-container">
+                            <div className="assistant-step-card">
+                              <div className="assistant-step-header">
+                                <span className="assistant-step-badge">Downloaded</span>
+                                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                                  {formatBytes(ev.size)}
+                                </span>
+                              </div>
+                              <div style={{ fontWeight: 600, fontSize: 13, color: '#fff' }}>
+                                {ev.filename}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  fontFamily: 'var(--font-mono)',
+                                  color: 'var(--text-muted)',
+                                  wordBreak: 'break-all'
+                                }}
+                              >
+                                {ev.path}
+                              </div>
+                              <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                                {ev.state === 'completed' && (
+                                  <button
+                                    className="copilot-btn-pill"
+                                    onClick={() => window.api?.downloads.openFile(ev.path)}
+                                  >
+                                    <IconFile size={12} /> Open
+                                  </button>
+                                )}
+                                <button
+                                  className="copilot-btn-pill"
+                                  onClick={() => window.api?.downloads.showInFolder(ev.path)}
+                                >
+                                  <IconFolder size={12} /> Reveal
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      case 'confirmation_required':
+                        return (
+                          <div key={i} className="assistant-response-container">
+                            <div className="confirmation-banner">
+                              <div className="confirmation-header">
+                                <span className="confirmation-badge">
+                                  <IconShield size={11} /> Confirm
+                                </span>
+                                <span className="confirmation-title">{ev.title}</span>
+                              </div>
+                              <div className="confirmation-desc">{ev.description}</div>
+                              {ev.target && (
+                                <div className="confirmation-target">
+                                  Target: <code>{ev.target}</code>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      case 'done':
+                        return (
+                          <div key={i} className="assistant-response-container">
+                            <div className="copilot-summary-body">{ev.summary}</div>
+                            <div className="copilot-export-pills">
+                              <button
+                                className="copilot-btn-pill"
+                                onClick={async () => {
+                                  const res = await window.api?.export.saveToFile({
+                                    content: ev.summary,
+                                    filename: `copilot-summary-${Date.now()}.md`,
+                                    format: 'markdown'
+                                  })
+                                  if (res?.ok && res.path) {
+                                    window.api?.downloads.showInFolder(res.path)
+                                  }
+                                }}
+                                title="Export summary as Markdown file"
+                              >
+                                Export .md
+                              </button>
+                              <button
+                                className="copilot-btn-pill"
+                                onClick={async () => {
+                                  const res = await window.api?.export.saveToFile({
+                                    content: JSON.stringify(
+                                      { summary: ev.summary, steps: ev.steps, totalTokens: ev.totalTokens },
+                                      null,
+                                      2
+                                    ),
+                                    filename: `copilot-summary-${Date.now()}.json`,
+                                    format: 'json'
+                                  })
+                                  if (res?.ok && res.path) {
+                                    window.api?.downloads.showInFolder(res.path)
+                                  }
+                                }}
+                                title="Export summary as JSON"
+                              >
+                                Export .json
+                              </button>
+                              <button
+                                className="copilot-btn-pill"
+                                onClick={async () => {
+                                  const res = await window.api?.export.saveToFile({
+                                    content: ev.summary,
+                                    filename: `copilot-summary-${Date.now()}.txt`,
+                                    format: 'text'
+                                  })
+                                  if (res?.ok && res.path) {
+                                    window.api?.downloads.showInFolder(res.path)
+                                  }
+                                }}
+                                title="Export summary as Plain Text"
+                              >
+                                Export .txt
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      case 'error':
+                        return (
+                          <div key={i} className="assistant-response-container">
+                            <div
+                              style={{
+                                color: 'var(--error)',
+                                background: 'rgba(244,63,94,0.1)',
+                                padding: 12,
+                                borderRadius: 10,
+                                fontSize: 13
                               }}
-                              title="Export summary as JSON"
                             >
-                              Export .json
-                            </button>
-                            <button
-                              className="btn-log-export"
-                              onClick={async () => {
-                                const res = await window.api?.export.saveToFile({
-                                  content: ev.summary,
-                                  filename: `strawberry-summary-${Date.now()}.txt`,
-                                  format: 'text'
-                                })
-                                if (res?.ok && res.path) {
-                                  window.api?.downloads.showInFolder(res.path)
-                                }
-                              }}
-                              title="Export summary as Plain Text"
-                            >
-                              Export .txt
-                            </button>
+                              {ev.message}
+                              {ev.hint && (
+                                <div style={{ fontSize: 11, color: '#aaa', marginTop: 4 }}>
+                                  {ev.hint}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      )
-                    case 'error':
-                      return (
-                        <div key={i} className="log-entry error">
-                          <div className="log-entry-header">
-                            <span className="log-tag error">ERROR</span>
+                        )
+                      case 'cancelled':
+                        return (
+                          <div
+                            key={i}
+                            style={{
+                              color: '#888',
+                              fontSize: 12,
+                              textAlign: 'center',
+                              margin: '8px 0'
+                            }}
+                          >
+                            Task stopped by user.
                           </div>
-                          <div className="log-error-text">{ev.message}</div>
-                          {ev.hint && <div className="log-error-hint">{ev.hint}</div>}
-                        </div>
-                      )
-                    case 'cancelled':
-                      return (
-                        <div key={i} className="log-entry">
-                          <div className="log-entry-header">
-                            <span className="log-tag">ABORTED</span>
-                          </div>
-                          <div style={{ color: '#71717a', fontSize: 11 }}>Task stopped by user.</div>
-                        </div>
-                      )
-                    default:
-                      return null
-                  }
-                })
+                        )
+                      default:
+                        return null
+                    }
+                  })}
+                </div>
               )}
               <div ref={feedEndRef} />
             </div>
 
             {/* Active Confirmation Gate Banner */}
             {activeConfirmation && (
-              <div className="confirmation-banner">
-                <div className="confirmation-header">
-                  <span className="confirmation-badge">
-                    <IconShield size={11} /> SECURITY CHECK
-                  </span>
-                  <span className="confirmation-title">{activeConfirmation.title}</span>
-                </div>
-                <div className="confirmation-desc">{activeConfirmation.description}</div>
-                {activeConfirmation.target && (
-                  <div className="confirmation-target">
-                    Target: <code>{activeConfirmation.target}</code>
+              <div style={{ padding: '0 16px 10px 16px' }}>
+                <div className="confirmation-banner">
+                  <div className="confirmation-header">
+                    <span className="confirmation-badge">
+                      <IconShield size={11} /> Confirm
+                    </span>
+                    <span className="confirmation-title">{activeConfirmation.title}</span>
                   </div>
-                )}
-                <div className="confirmation-actions">
-                  <button className="btn-approve" onClick={handleApprove}>
-                    Authorize Action
-                  </button>
-                  <button className="btn-deny" onClick={handleDeny}>
-                    Reject
-                  </button>
+                  <div className="confirmation-desc">{activeConfirmation.description}</div>
+                  {activeConfirmation.target && (
+                    <div className="confirmation-target">
+                      Target: <code>{activeConfirmation.target}</code>
+                    </div>
+                  )}
+                  <div className="confirmation-actions">
+                    <button className="btn-approve" onClick={handleApprove}>
+                      Authorize
+                    </button>
+                    <button className="btn-deny" onClick={handleDeny}>
+                      Reject
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* Terminal Command Input Footer */}
-            <div className="sidebar-footer">
-              <div className="terminal-input-wrapper">
-                <div className="terminal-input-prefix">&gt;</div>
+            {/* Bottom Rounded Pill Input (Matches Reference Screenshot) */}
+            <div className="copilot-footer">
+              <div className="copilot-input-pill">
+                <button
+                  type="button"
+                  className="copilot-plus-btn"
+                  title="New topic"
+                  onClick={() => {
+                    setEvents([])
+                    setExpandedThoughts({})
+                    setTaskPrompt('')
+                    textareaRef.current?.focus()
+                  }}
+                >
+                  <IconPlus size={16} />
+                </button>
+
                 <textarea
                   ref={textareaRef}
-                  className="terminal-textarea"
-                  placeholder="Enter instruction (e.g., 'Extract all pricing tiers from this page and export to CSV')..."
+                  className="copilot-textarea"
+                  placeholder="Message Copilot"
+                  rows={1}
                   value={taskPrompt}
                   disabled={agentStatus === 'running'}
                   onChange={(e) => setTaskPrompt(e.target.value)}
@@ -859,22 +944,25 @@ export function App(): React.JSX.Element {
                     }
                   }}
                 />
-              </div>
-              <div className="terminal-footer-actions">
-                <span className="terminal-kbd-hint">
-                  <kbd>↵</kbd> run • <kbd>Shift</kbd>+<kbd>↵</kbd> newline
-                </span>
+
                 {agentStatus === 'running' ? (
-                  <button className="btn-term-stop" onClick={handleCancelAgent}>
-                    <IconStop size={12} /> Abort
+                  <button
+                    type="button"
+                    className="copilot-stop-btn"
+                    title="Stop generating"
+                    onClick={handleCancelAgent}
+                  >
+                    <IconStop size={14} />
                   </button>
                 ) : (
                   <button
-                    className="btn-term-run"
+                    type="button"
+                    className={`copilot-send-btn ${taskPrompt.trim() ? 'active' : ''}`}
                     disabled={!taskPrompt.trim()}
+                    title="Send message"
                     onClick={() => handleRunAgent()}
                   >
-                    <IconPlay size={11} /> Run
+                    <IconSend size={15} />
                   </button>
                 )}
               </div>
