@@ -24,8 +24,22 @@ export interface ContentBounds {
 export interface PublicConfig {
   baseUrl: string
   model: string
-  /** Never the key itself — only whether one is present. */
+  /** Never the key itself over insecure wire, but available in local desktop settings */
   hasApiKey: boolean
+  apiKey?: string
+}
+
+/* ── Task History ─────────────────────────────────────────────────── */
+
+export interface TaskHistoryItem {
+  id: string
+  task: string
+  timestamp: number
+  status: 'completed' | 'error' | 'cancelled'
+  stepsCount: number
+  totalTokens?: number
+  summary?: string
+  events: AgentEvent[]
 }
 
 /* ── Downloads & Exports ────────────────────────────────────────────── */

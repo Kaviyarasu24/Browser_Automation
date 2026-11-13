@@ -23,11 +23,13 @@ This document tracks upcoming features, architectural improvements, and planned 
 ---
 
 ## 💾 3. Task History & Run Persistence
-> **Status: ⏳ Pending**
-- [ ] **Local Task Database**: Persist completed tasks, step logs, timings, token metrics, and final answers locally in SQLite or indexed browser storage.
-- [ ] **Sidebar History Drawer**: Add a collapsible history tab in the UI to review past agent runs.
-- [ ] **One-Click Export**: Ability to copy answers formatted as Markdown, JSON, or CSV.
-- [ ] **Task Re-run**: Re-execute previous prompts with a single click.
+> **Status: ✅ Completed**
+- [x] **Local Task Database**: Persist completed tasks, step logs, timings, token metrics, and final answers locally in `appData/strawberry-history.json`.
+- [x] **Sidebar History Drawer**: Clean slide-over drawer triggered by the hamburger icon (`≡`) on the side panel header to review past chats and runs.
+- [x] **Interactive Conversation Restore**: Click any past run to instantly load the full event trajectory and thought process back into the conversation view.
+- [x] **Item & Batch Deletion**: Delete individual history items or clear entire history with a single click.
+- [x] **Runtime Settings Manager**: Full UI modal to edit `Base URL`, `API Key` (with show/hide mask toggle), and `Model Identifier` (with one-click presets like Nemotron, Sonnet 3.5, GPT-4o, Gemini 2.0 Flash) with auto-persistence to `.env`.
+- [x] **In-App Connection Tester**: Test API keys and connectivity directly with live ping checks and feedback badges.
 
 ---
 

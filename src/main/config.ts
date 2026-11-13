@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
 
@@ -97,6 +97,59 @@ export function getConfig(): RuntimeConfig {
   }
 
   return cached
+}
+
+export function updateConfig(updates: {
+  baseUrl?: string
+  apiKey?: string
+  model?: string
+}): RuntimeConfig {
+  const current = getConfig()
+
+  if (updates.baseUrl !== undefined) {
+    const cleanUrl = updates.baseUrl.trim().replace(/\/+$/, '')
+    process.env.BASE_URL = cleanUrl
+    current.baseUrl = cleanUrl
+  }
+  if (updates.apiKey !== undefined) {
+    const cleanKey = updates.apiKey.trim()
+    process.env.API_KEY = cleanKey
+    current.apiKey = cleanKey
+  }
+  if (updates.model !== undefined) {
+    const cleanModel = updates.model.trim()
+    process.env.MODEL = cleanModel
+    current.model = cleanModel
+  }
+
+  cached = current
+
+  // Persist to .env files
+  const envContent = [
+    `BASE_URL=${current.baseUrl}`,
+    `API_KEY=${current.apiKey}`,
+    `MODEL=${current.model}`,
+    current.siteUrl ? `OPENROUTER_SITE_URL=${current.siteUrl}` : '',
+    current.siteName ? `OPENROUTER_SITE_NAME=${current.siteName}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n') + '\n'
+
+  const candidates = [
+    join(process.cwd(), '.env'),
+    join(app.getAppPath(), '.env'),
+    join(app.getPath('userData'), '.env')
+  ]
+
+  for (const file of candidates) {
+    try {
+      writeFileSync(file, envContent, 'utf8')
+    } catch (err) {
+      console.warn(`[config] failed to write ${file}:`, (err as Error).message)
+    }
+  }
+
+  return current
 }
 
 /**

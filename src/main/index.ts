@@ -1,10 +1,16 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { getConfig, validateConfig } from './config.js'
+import { getConfig, validateConfig, updateConfig } from './config.js'
 import { TabManager, tabUserAgent } from './browser/tabs.js'
 import { runAgent } from './agent/loop.js'
 import { ping } from './agent/llm.js'
+import {
+  listHistory,
+  saveHistoryItem,
+  deleteHistoryItem,
+  clearHistory
+} from './agent/history.js'
 import {
   initDownloadManager,
   listDownloads,
@@ -12,7 +18,7 @@ import {
   showInDownloadFolder,
   exportDataToFile
 } from './browser/downloads.js'
-import type { ContentBounds, AgentEvent, PublicConfig } from '../shared/types.js'
+import type { ContentBounds, AgentEvent, PublicConfig, TaskHistoryItem } from '../shared/types.js'
 
 let mainWindow: BrowserWindow | null = null
 let tabManager: TabManager | null = null
@@ -148,13 +154,41 @@ function setupIpc(): void {
     return {
       baseUrl: cfg.baseUrl,
       model: cfg.model,
-      hasApiKey: Boolean(cfg.apiKey)
+      hasApiKey: Boolean(cfg.apiKey),
+      apiKey: cfg.apiKey
     }
   })
+
+  ipcMain.handle(
+    'config:update',
+    (_event, updates: { baseUrl?: string; apiKey?: string; model?: string }) => {
+      const updated = updateConfig(updates)
+      return {
+        ok: true,
+        config: {
+          baseUrl: updated.baseUrl,
+          model: updated.model,
+          hasApiKey: Boolean(updated.apiKey),
+          apiKey: updated.apiKey
+        }
+      }
+    }
+  )
 
   ipcMain.handle('config:ping', async () => {
     const cfg = getConfig()
     return await ping(cfg)
+  })
+
+  // Task History
+  ipcMain.handle('history:list', () => listHistory())
+  ipcMain.handle('history:delete', (_event, id: string) => {
+    deleteHistoryItem(id)
+    return true
+  })
+  ipcMain.handle('history:clear', () => {
+    clearHistory()
+    return true
   })
 
   // Agent execution
@@ -176,7 +210,11 @@ function setupIpc(): void {
     const abortController = new AbortController()
     activeAgentAbort = abortController
 
+    const historyEvents: AgentEvent[] = []
+    const startedAt = Date.now()
+
     const emit = (event: AgentEvent): void => {
+      historyEvents.push(event)
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('agent:event', event)
       }
@@ -225,6 +263,41 @@ function setupIpc(): void {
           resolve(false)
         }
         pendingConfirmations.clear()
+
+        // Persist completed/aborted task to history
+        try {
+          const doneEv = historyEvents.find((e) => e.type === 'done') as
+            | { summary: string; steps: number; totalTokens?: number }
+            | undefined
+          const errEv = historyEvents.find((e) => e.type === 'error') as
+            | { message: string }
+            | undefined
+          const cancelEv = historyEvents.find((e) => e.type === 'cancelled')
+          const status = doneEv
+            ? 'completed'
+            : errEv
+              ? 'error'
+              : cancelEv
+                ? 'cancelled'
+                : 'completed'
+          const summary = doneEv?.summary || errEv?.message || ''
+          const stepsCount =
+            doneEv?.steps || historyEvents.filter((e) => e.type === 'tool').length
+          const totalTokens = doneEv?.totalTokens
+
+          saveHistoryItem({
+            id: randomUUID(),
+            task,
+            timestamp: startedAt,
+            status,
+            stepsCount,
+            totalTokens,
+            summary,
+            events: historyEvents
+          })
+        } catch (histErr) {
+          console.warn('[history] failed to save run:', (histErr as Error).message)
+        }
       }
     })()
 

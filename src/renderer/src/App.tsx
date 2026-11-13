@@ -1,5 +1,12 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import type { AgentEvent, ContentBounds, DownloadRecord, PublicConfig, TabState } from '../../shared/types.js'
+import type {
+  AgentEvent,
+  ContentBounds,
+  DownloadRecord,
+  PublicConfig,
+  TabState,
+  TaskHistoryItem
+} from '../../shared/types.js'
 import {
   IconBack,
   IconForward,
@@ -23,13 +30,26 @@ import {
   IconMoreHorizontal,
   IconSend,
   IconChevronRight,
-  IconChevronDown
+  IconChevronDown,
+  IconSettings,
+  IconTrash,
+  IconHistory,
+  IconEye,
+  IconEyeOff
 } from './components/Icons.js'
 
 const COPILOT_SUGGESTIONS = [
   'Summarize the main points on this page.',
   'Play a trivia game with me about [topic], asking one question at a time, tracking my score, and explaining each answer after I respond.',
   'Track the price of a product for me, compare recent changes, and tell me whether it looks like a good time to buy.'
+]
+
+const MODEL_PRESETS = [
+  'nvidia/nemotron-3.5-lightning:free',
+  'anthropic/claude-3.5-sonnet',
+  'openai/gpt-4o',
+  'google/gemini-2.0-flash-exp:free',
+  'meta-llama/llama-3.3-70b-instruct:free'
 ]
 
 export function App(): React.JSX.Element {
@@ -46,6 +66,15 @@ export function App(): React.JSX.Element {
   const [events, setEvents] = useState<AgentEvent[]>([])
   const [expandedThoughts, setExpandedThoughts] = useState<Record<number, boolean>>({})
   const [showMoreMenu, setShowMoreMenu] = useState(false)
+  const [showHistoryDrawer, setShowHistoryDrawer] = useState(false)
+  const [historyItems, setHistoryItems] = useState<TaskHistoryItem[]>([])
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [settingsBaseUrl, setSettingsBaseUrl] = useState('')
+  const [settingsApiKey, setSettingsApiKey] = useState('')
+  const [settingsModel, setSettingsModel] = useState('')
+  const [showApiKeyText, setShowApiKeyText] = useState(false)
+  const [settingsPingStatus, setSettingsPingStatus] = useState<string | null>(null)
+  const [settingsSaving, setSettingsSaving] = useState(false)
   const [pingStatus, setPingStatus] = useState<string | null>(null)
   const [downloads, setDownloads] = useState<DownloadRecord[]>([])
   const [showDownloadsDrawer, setShowDownloadsDrawer] = useState(false)
@@ -96,12 +125,20 @@ export function App(): React.JSX.Element {
     return () => observer.disconnect()
   }, [updateBounds, sidebarOpen])
 
+  const loadHistory = useCallback(() => {
+    if (!window.api?.history) return
+    window.api.history.list().then(setHistoryItems).catch(console.error)
+  }, [])
+
   // Initial load and listeners
   useEffect(() => {
     if (!window.api) return
 
     // Get config
     window.api.config.get().then(setConfig).catch(console.error)
+
+    // Load initial history
+    loadHistory()
 
     // Listen for tabs updates
     const unbindTabs = window.api.tabs.onUpdated(({ tabs, activeId }) => {
@@ -157,12 +194,15 @@ export function App(): React.JSX.Element {
       } else if (event.type === 'done') {
         setAgentStatus('done')
         setActiveConfirmation(null)
+        loadHistory()
       } else if (event.type === 'error') {
         setAgentStatus('error')
         setActiveConfirmation(null)
+        loadHistory()
       } else if (event.type === 'cancelled') {
         setAgentStatus('idle')
         setActiveConfirmation(null)
+        loadHistory()
       }
     })
 
@@ -177,7 +217,7 @@ export function App(): React.JSX.Element {
       unbindAgent()
       unbindDownloads?.()
     }
-  }, [])
+  }, [loadHistory])
 
   const formatBytes = (bytes: number): string => {
     if (!bytes || bytes <= 0) return '0 B'
@@ -185,6 +225,18 @@ export function App(): React.JSX.Element {
     const sizes = ['B', 'KB', 'MB', 'GB']
     const i = Math.floor(Math.log(bytes) / Math.log(k))
     return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
+  }
+
+  const formatTimeAgo = (timestamp: number): string => {
+    const elapsedSecs = Math.floor((Date.now() - timestamp) / 1000)
+    if (elapsedSecs < 60) return 'Just now'
+    const mins = Math.floor(elapsedSecs / 60)
+    if (mins < 60) return `${mins}m ago`
+    const hours = Math.floor(mins / 60)
+    if (hours < 24) return `${hours}h ago`
+    const days = Math.floor(hours / 24)
+    if (days < 7) return `${days}d ago`
+    return new Date(timestamp).toLocaleDateString()
   }
 
   // Auto-scroll event feed
@@ -241,6 +293,7 @@ export function App(): React.JSX.Element {
     setEvents([])
     setExpandedThoughts({})
     setShowMoreMenu(false)
+    setShowHistoryDrawer(false)
     setAgentStatus('running')
     setSidebarOpen(true)
     const res = await window.api?.agent.run(promptToRun)
@@ -275,6 +328,68 @@ export function App(): React.JSX.Element {
     const res = await window.api?.config.ping()
     setPingStatus(res ? (res.ok ? '✓ Connected' : `✕ ${res.detail}`) : 'Failed')
     setTimeout(() => setPingStatus(null), 3000)
+  }
+
+  // History operations
+  const handleSelectHistory = (item: TaskHistoryItem) => {
+    setEvents(item.events)
+    setExpandedThoughts({})
+    setShowHistoryDrawer(false)
+    setShowMoreMenu(false)
+    setAgentStatus(item.status === 'completed' ? 'done' : item.status === 'error' ? 'error' : 'idle')
+  }
+
+  const handleDeleteHistory = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    await window.api?.history.delete(id)
+    setHistoryItems((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  const handleClearAllHistory = async () => {
+    await window.api?.history.clear()
+    setHistoryItems([])
+  }
+
+  // Settings operations
+  const handleOpenSettings = () => {
+    setSettingsBaseUrl(config?.baseUrl || '')
+    setSettingsApiKey(config?.apiKey || '')
+    setSettingsModel(config?.model || '')
+    setShowApiKeyText(false)
+    setSettingsPingStatus(null)
+    setShowSettingsModal(true)
+    setShowMoreMenu(false)
+    setShowHistoryDrawer(false)
+  }
+
+  const handleSaveSettings = async () => {
+    setSettingsSaving(true)
+    try {
+      const res = await window.api?.config.update({
+        baseUrl: settingsBaseUrl.trim(),
+        apiKey: settingsApiKey.trim(),
+        model: settingsModel.trim()
+      })
+      if (res?.ok && res.config) {
+        setConfig(res.config)
+        setShowSettingsModal(false)
+      }
+    } finally {
+      setSettingsSaving(false)
+    }
+  }
+
+  const handleSettingsPing = async () => {
+    setSettingsPingStatus('Testing...')
+    // Temporarily save to test or call ping
+    await window.api?.config.update({
+      baseUrl: settingsBaseUrl.trim(),
+      apiKey: settingsApiKey.trim(),
+      model: settingsModel.trim()
+    })
+    const res = await window.api?.config.ping()
+    setSettingsPingStatus(res ? (res.ok ? '✓ Connected' : `✕ ${res.detail}`) : 'Failed')
+    setTimeout(() => setSettingsPingStatus(null), 4000)
   }
 
   const isHttps = activeTab?.url.startsWith('https://')
@@ -537,9 +652,13 @@ export function App(): React.JSX.Element {
             {/* Top Bar (Hamburger, Ellipsis, Close) */}
             <div className="copilot-header">
               <button
-                className="copilot-header-btn"
-                title="Menu"
-                onClick={() => setShowMoreMenu((prev) => !prev)}
+                className={`copilot-header-btn ${showHistoryDrawer ? 'active' : ''}`}
+                title="Chat History"
+                onClick={() => {
+                  setShowHistoryDrawer((prev) => !prev)
+                  loadHistory()
+                  setShowMoreMenu(false)
+                }}
               >
                 <IconMenu size={18} />
               </button>
@@ -558,6 +677,7 @@ export function App(): React.JSX.Element {
                   onClick={() => {
                     setSidebarOpen(false)
                     setShowMoreMenu(false)
+                    setShowHistoryDrawer(false)
                   }}
                 >
                   <IconClose size={16} />
@@ -577,12 +697,37 @@ export function App(): React.JSX.Element {
                       <span>New topic</span>
                       <span style={{ fontSize: 10, color: '#888' }}>Clear</span>
                     </button>
-                    <div className="copilot-menu-divider" />
-                    <div className="copilot-menu-item" style={{ cursor: 'default' }}>
-                      <span style={{ color: '#888' }}>Model:</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-                        {config?.model || 'default'}
+                    <button
+                      className="copilot-menu-item"
+                      onClick={() => {
+                        setShowHistoryDrawer(true)
+                        loadHistory()
+                        setShowMoreMenu(false)
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <IconHistory size={13} /> Chat History
                       </span>
+                      {historyItems.length > 0 && (
+                        <span style={{ fontSize: 10, color: '#888' }}>{historyItems.length}</span>
+                      )}
+                    </button>
+                    <button
+                      className="copilot-menu-item"
+                      onClick={() => {
+                        handleOpenSettings()
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <IconSettings size={13} /> Settings
+                      </span>
+                    </button>
+                    <div className="copilot-menu-divider" />
+                    <div className="copilot-menu-info-row">
+                      <div className="copilot-menu-info-label">Active Model</div>
+                      <div className="copilot-menu-info-value" title={config?.model}>
+                        {config?.model || 'default'}
+                      </div>
                     </div>
                     {tokenStats && (
                       <div className="copilot-menu-item" style={{ cursor: 'default' }}>
@@ -607,6 +752,103 @@ export function App(): React.JSX.Element {
                 )}
               </div>
             </div>
+
+            {/* History Slide-Over Drawer */}
+            {showHistoryDrawer && (
+              <div className="copilot-history-drawer">
+                <div className="history-drawer-header">
+                  <div className="history-drawer-title-group">
+                    <IconHistory size={16} />
+                    <span>Recent Chats ({historyItems.length})</span>
+                  </div>
+                  <div className="history-drawer-actions">
+                    <button
+                      className="copilot-header-btn"
+                      title="Settings"
+                      onClick={handleOpenSettings}
+                    >
+                      <IconSettings size={15} />
+                    </button>
+                    <button
+                      className="copilot-header-btn"
+                      title="New topic"
+                      onClick={() => {
+                        setEvents([])
+                        setExpandedThoughts({})
+                        setShowHistoryDrawer(false)
+                        setTaskPrompt('')
+                        textareaRef.current?.focus()
+                      }}
+                    >
+                      <IconPlus size={16} />
+                    </button>
+                    <button
+                      className="copilot-header-btn"
+                      title="Close history"
+                      onClick={() => setShowHistoryDrawer(false)}
+                    >
+                      <IconClose size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="history-list">
+                  {historyItems.length === 0 ? (
+                    <div style={{ padding: '36px 16px', textAlign: 'center', fontSize: 12, color: '#888' }}>
+                      <IconHistory size={30} style={{ opacity: 0.3, marginBottom: 8 }} />
+                      <div>No conversation history yet</div>
+                    </div>
+                  ) : (
+                    historyItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="history-item-card"
+                        onClick={() => handleSelectHistory(item)}
+                      >
+                        <div className="history-item-header">
+                          <span className="history-item-task" title={item.task}>
+                            {item.task}
+                          </span>
+                          <button
+                            className="history-item-delete"
+                            title="Delete this chat"
+                            onClick={(e) => handleDeleteHistory(e, item.id)}
+                          >
+                            <IconTrash size={12} />
+                          </button>
+                        </div>
+                        <div className="history-item-meta">
+                          <span>{formatTimeAgo(item.timestamp)}</span>
+                          <span>•</span>
+                          <span>{item.stepsCount} steps</span>
+                          {item.totalTokens ? (
+                            <>
+                              <span>•</span>
+                              <span>{(item.totalTokens / 1000).toFixed(1)}k tok</span>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="history-drawer-footer">
+                  <button className="btn-history-footer" onClick={handleOpenSettings}>
+                    <IconSettings size={14} /> Settings
+                  </button>
+                  {historyItems.length > 0 && (
+                    <button
+                      className="btn-history-footer"
+                      style={{ color: '#ef4444' }}
+                      onClick={handleClearAllHistory}
+                    >
+                      <IconTrash size={13} /> Clear All
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Scrollable Conversation Content */}
             <div className="copilot-content">
@@ -970,6 +1212,132 @@ export function App(): React.JSX.Element {
           </aside>
         )}
       </div>
+
+      {/* Settings Modal Dialog */}
+      {showSettingsModal && (
+        <div className="settings-modal-backdrop" onClick={() => setShowSettingsModal(false)}>
+          <div className="settings-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="settings-modal-header">
+              <div className="settings-modal-title">
+                <IconSettings size={18} />
+                <span>LLM Configuration & Settings</span>
+              </div>
+              <button
+                className="btn-icon"
+                style={{ width: 26, height: 26 }}
+                onClick={() => setShowSettingsModal(false)}
+              >
+                <IconClose size={14} />
+              </button>
+            </div>
+
+            <div className="settings-modal-body">
+              {/* Base URL */}
+              <div className="settings-field-group">
+                <label className="settings-field-label">
+                  <span>API Base URL</span>
+                </label>
+                <div className="settings-input-wrapper">
+                  <input
+                    type="text"
+                    className="settings-input"
+                    placeholder="https://openrouter.ai/api/v1"
+                    value={settingsBaseUrl}
+                    onChange={(e) => setSettingsBaseUrl(e.target.value)}
+                  />
+                </div>
+                <span className="settings-field-hint">
+                  Supports any OpenAI-compatible API endpoint (OpenRouter, OpenAI, Groq, Ollama, vLLM).
+                </span>
+              </div>
+
+              {/* API Key */}
+              <div className="settings-field-group">
+                <label className="settings-field-label">
+                  <span>API Key</span>
+                </label>
+                <div className="settings-input-wrapper">
+                  <input
+                    type={showApiKeyText ? 'text' : 'password'}
+                    className="settings-input"
+                    placeholder="sk-or-v1-..."
+                    value={settingsApiKey}
+                    onChange={(e) => setSettingsApiKey(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="settings-input-btn"
+                    title={showApiKeyText ? 'Hide API key' : 'Show API key'}
+                    onClick={() => setShowApiKeyText((prev) => !prev)}
+                  >
+                    {showApiKeyText ? <IconEyeOff size={15} /> : <IconEye size={15} />}
+                  </button>
+                </div>
+                <span className="settings-field-hint">
+                  Saved securely to your local configuration (.env). Never transmitted to any third party.
+                </span>
+              </div>
+
+              {/* Model */}
+              <div className="settings-field-group">
+                <label className="settings-field-label">
+                  <span>Model Identifier</span>
+                </label>
+                <div className="settings-input-wrapper">
+                  <input
+                    type="text"
+                    className="settings-input"
+                    placeholder="nvidia/nemotron-3.5-lightning:free"
+                    value={settingsModel}
+                    onChange={(e) => setSettingsModel(e.target.value)}
+                  />
+                </div>
+                <div className="settings-model-chips">
+                  {MODEL_PRESETS.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      className="settings-model-chip"
+                      onClick={() => setSettingsModel(m)}
+                    >
+                      {m.split('/').pop() || m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-modal-footer">
+              <div className="settings-footer-left">
+                <button
+                  type="button"
+                  className="btn-settings-ping"
+                  onClick={handleSettingsPing}
+                >
+                  {settingsPingStatus || 'Test Connection'}
+                </button>
+              </div>
+              <div className="settings-footer-right">
+                <button
+                  type="button"
+                  className="btn-settings-cancel"
+                  onClick={() => setShowSettingsModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-settings-save"
+                  disabled={settingsSaving}
+                  onClick={handleSaveSettings}
+                >
+                  {settingsSaving ? 'Saving...' : 'Save Settings'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

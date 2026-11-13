@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AgentEvent, ContentBounds, DownloadRecord, PublicConfig, TabState } from '../shared/types.js'
+import type {
+  AgentEvent,
+  ContentBounds,
+  DownloadRecord,
+  PublicConfig,
+  TabState,
+  TaskHistoryItem
+} from '../shared/types.js'
 
 export interface StrawberryApi {
   tabs: {
@@ -16,7 +23,17 @@ export interface StrawberryApi {
   }
   config: {
     get: () => Promise<PublicConfig>
+    update: (updates: { baseUrl?: string; apiKey?: string; model?: string }) => Promise<{
+      ok: boolean
+      config: PublicConfig
+      error?: string
+    }>
     ping: () => Promise<{ ok: boolean; detail: string }>
+  }
+  history: {
+    list: () => Promise<TaskHistoryItem[]>
+    delete: (id: string) => Promise<boolean>
+    clear: () => Promise<boolean>
   }
   agent: {
     run: (task: string) => Promise<{ ok: boolean; error?: string }>
@@ -65,7 +82,13 @@ const api: StrawberryApi = {
   },
   config: {
     get: () => ipcRenderer.invoke('config:get'),
+    update: (updates) => ipcRenderer.invoke('config:update', updates),
     ping: () => ipcRenderer.invoke('config:ping')
+  },
+  history: {
+    list: () => ipcRenderer.invoke('history:list'),
+    delete: (id) => ipcRenderer.invoke('history:delete', id),
+    clear: () => ipcRenderer.invoke('history:clear')
   },
   agent: {
     run: (task: string) => ipcRenderer.invoke('agent:run', task),
