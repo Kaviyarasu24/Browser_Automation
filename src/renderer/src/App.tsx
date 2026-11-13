@@ -538,7 +538,17 @@ export function App(): React.JSX.Element {
             <button
               className={`btn-icon ${showDownloadsDrawer ? 'active' : ''}`}
               title="Downloads"
-              onClick={() => setShowDownloadsDrawer((prev) => !prev)}
+              onClick={() => {
+                if (showDownloadsDrawer) {
+                  setShowDownloadsDrawer(false)
+                } else {
+                  setSidebarOpen(true)
+                  setShowDownloadsDrawer(true)
+                  setShowHistoryDrawer(false)
+                  setShowSettingsDrawer(false)
+                  setShowMoreMenu(false)
+                }
+              }}
             >
               <IconDownload size={16} />
               {isDownloading ? (
@@ -551,94 +561,24 @@ export function App(): React.JSX.Element {
             <button
               className={`btn-agent-toggle ${sidebarOpen ? 'active' : ''}`}
               title="Toggle Copilot"
-              onClick={() => setSidebarOpen((prev) => !prev)}
+              onClick={() => {
+                setSidebarOpen((prev) => {
+                  const next = !prev
+                  if (!next) {
+                    setShowDownloadsDrawer(false)
+                    setShowHistoryDrawer(false)
+                    setShowSettingsDrawer(false)
+                    setShowMoreMenu(false)
+                  }
+                  return next
+                })
+              }}
             >
               <span className={`agent-dot ${agentStatus === 'running' ? 'running' : ''}`} />
               <span>Copilot</span>
             </button>
           </div>
         </div>
-
-        {/* Chrome Downloads Drawer Popover */}
-        {showDownloadsDrawer && (
-          <div className="downloads-popover">
-            <div className="downloads-popover-header">
-              <span>Downloads ({downloads.length})</span>
-              <button
-                className="btn-icon"
-                style={{ width: 22, height: 22 }}
-                onClick={() => setShowDownloadsDrawer(false)}
-              >
-                <IconClose size={13} />
-              </button>
-            </div>
-            <div className="downloads-list">
-              {downloads.length === 0 ? (
-                <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
-                  <IconDownload size={28} style={{ opacity: 0.35, marginBottom: 8 }} />
-                  <div>No downloads in this session</div>
-                </div>
-              ) : (
-                downloads.map((d) => (
-                  <div key={d.id} className="download-item-card">
-                    <div className="download-item-top">
-                      <div className="download-file-icon">
-                        <IconFile size={18} />
-                      </div>
-                      <div className="download-item-details">
-                        <div className="download-item-title" title={d.filename}>
-                          {d.filename}
-                        </div>
-                        <div className="download-item-meta">
-                          <span>{formatBytes(d.totalBytes || d.receivedBytes)}</span>
-                          <span>•</span>
-                          <span
-                            style={{
-                              textTransform: 'capitalize',
-                              fontWeight: 600,
-                              color:
-                                d.state === 'completed'
-                                  ? 'var(--success)'
-                                  : d.state === 'progressing'
-                                    ? 'var(--info)'
-                                    : 'var(--error)'
-                            }}
-                          >
-                            {d.state}
-                          </span>
-                        </div>
-                        {d.state === 'progressing' && d.totalBytes > 0 && (
-                          <div className="download-progress-bar-bg">
-                            <div
-                              className="download-progress-bar-fill"
-                              style={{ width: `${Math.min(100, Math.round((d.receivedBytes / d.totalBytes) * 100))}%` }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="download-item-actions">
-                      {d.state === 'completed' && (
-                        <button
-                          className="btn-file-action"
-                          onClick={() => window.api?.downloads.openFile(d.savePath)}
-                        >
-                          <IconFile size={12} /> Open
-                        </button>
-                      )}
-                      <button
-                        className="btn-file-action"
-                        onClick={() => window.api?.downloads.showInFolder(d.savePath)}
-                      >
-                        <IconFolder size={12} /> Show in Folder
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Main Viewport */}
@@ -711,6 +651,22 @@ export function App(): React.JSX.Element {
                       </span>
                       {historyItems.length > 0 && (
                         <span style={{ fontSize: 10, color: '#888' }}>{historyItems.length}</span>
+                      )}
+                    </button>
+                    <button
+                      className="copilot-menu-item"
+                      onClick={() => {
+                        setShowDownloadsDrawer(true)
+                        setShowHistoryDrawer(false)
+                        setShowSettingsDrawer(false)
+                        setShowMoreMenu(false)
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <IconDownload size={13} /> Downloads
+                      </span>
+                      {downloads.length > 0 && (
+                        <span style={{ fontSize: 10, color: '#888' }}>{downloads.length}</span>
                       )}
                     </button>
                     <button
@@ -969,6 +925,116 @@ export function App(): React.JSX.Element {
                       {settingsSaving ? 'Saving...' : 'Save'}
                     </button>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Downloads Slide-Over Drawer */}
+            {showDownloadsDrawer && (
+              <div className="copilot-downloads-drawer">
+                <div className="downloads-drawer-header">
+                  <div className="downloads-drawer-title-group">
+                    <IconDownload size={16} />
+                    <span>Downloads ({downloads.length})</span>
+                  </div>
+                  <div className="downloads-drawer-actions">
+                    <button
+                      className="copilot-header-btn"
+                      title="Open Downloads Folder"
+                      onClick={() => window.api?.downloads.showInFolder('')}
+                    >
+                      <IconFolder size={15} />
+                    </button>
+                    <button
+                      className="copilot-header-btn"
+                      title="Close downloads"
+                      onClick={() => setShowDownloadsDrawer(false)}
+                    >
+                      <IconClose size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="downloads-list">
+                  {downloads.length === 0 ? (
+                    <div style={{ padding: '48px 16px', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
+                      <IconDownload size={34} style={{ opacity: 0.35, marginBottom: 10 }} />
+                      <div style={{ fontWeight: 600, color: '#e5e5e5', marginBottom: 4, fontSize: 13 }}>
+                        No downloads yet
+                      </div>
+                      <div style={{ maxWidth: 220, margin: '0 auto', lineHeight: 1.4 }}>
+                        Files downloaded from the web or by Copilot will appear here
+                      </div>
+                    </div>
+                  ) : (
+                    downloads.map((d) => (
+                      <div key={d.id} className="download-item-card">
+                        <div className="download-item-top">
+                          <div className="download-file-icon">
+                            <IconFile size={18} />
+                          </div>
+                          <div className="download-item-details">
+                            <div className="download-item-title" title={d.filename}>
+                              {d.filename}
+                            </div>
+                            <div className="download-item-meta">
+                              <span>{formatBytes(d.totalBytes || d.receivedBytes)}</span>
+                              <span>•</span>
+                              <span
+                                style={{
+                                  textTransform: 'capitalize',
+                                  fontWeight: 600,
+                                  color:
+                                    d.state === 'completed'
+                                      ? 'var(--success)'
+                                      : d.state === 'progressing'
+                                        ? 'var(--info)'
+                                        : 'var(--error)'
+                                }}
+                              >
+                                {d.state}
+                              </span>
+                            </div>
+                            {d.state === 'progressing' && d.totalBytes > 0 && (
+                              <div className="download-progress-bar-bg">
+                                <div
+                                  className="download-progress-bar-fill"
+                                  style={{
+                                    width: `${Math.min(100, Math.round((d.receivedBytes / d.totalBytes) * 100))}%`
+                                  }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="download-item-actions">
+                          {d.state === 'completed' && (
+                            <button
+                              className="btn-file-action"
+                              onClick={() => window.api?.downloads.openFile(d.savePath)}
+                            >
+                              <IconFile size={12} /> Open
+                            </button>
+                          )}
+                          <button
+                            className="btn-file-action"
+                            onClick={() => window.api?.downloads.showInFolder(d.savePath)}
+                          >
+                            <IconFolder size={12} /> Show in Folder
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="downloads-drawer-footer">
+                  <button
+                    className="btn-downloads-folder"
+                    onClick={() => window.api?.downloads.showInFolder('')}
+                  >
+                    <IconFolder size={14} /> Open Downloads Folder
+                  </button>
                 </div>
               </div>
             )}
