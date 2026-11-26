@@ -114,6 +114,7 @@ export function App(): React.JSX.Element {
   } | null>(null)
 
   const contentRef = useRef<HTMLDivElement>(null)
+  const omniboxRef = useRef<HTMLInputElement>(null)
   const feedEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -190,6 +191,11 @@ export function App(): React.JSX.Element {
     const unbindTabs = window.api.tabs.onUpdated(({ tabs, activeId }) => {
       setTabs(tabs)
       setActiveTabId(activeId)
+    })
+
+    const unbindFocusOmnibox = window.api.tabs.onFocusOmnibox(() => {
+      omniboxRef.current?.focus()
+      omniboxRef.current?.select()
     })
 
     // Listen for initial tabs
@@ -287,6 +293,7 @@ export function App(): React.JSX.Element {
 
     return () => {
       unbindTabs()
+      unbindFocusOmnibox()
       unbindAgent()
       unbindSettings()
       unbindTheme()
@@ -630,6 +637,7 @@ export function App(): React.JSX.Element {
               </button>
 
               <input
+                ref={omniboxRef}
                 type="text"
                 className="address-input"
                 value={urlInput}

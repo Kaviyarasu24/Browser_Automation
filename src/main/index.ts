@@ -12,6 +12,7 @@ import {
 } from './settings.js'
 import { BROWSER_PARTITION } from './browser/session.js'
 import { TabManager, tabUserAgent } from './browser/tabs.js'
+import { attachBrowserShortcuts, attachContextMenu } from './browser/shortcuts.js'
 import { runAgent } from './agent/loop.js'
 import { ping } from './agent/llm.js'
 import {
@@ -80,7 +81,9 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  tabManager = new TabManager(mainWindow.contentView, ua)
+  tabManager = new TabManager(mainWindow.contentView, ua, () => mainWindow)
+  attachBrowserShortcuts(mainWindow.webContents, () => tabManager, () => mainWindow)
+  attachContextMenu(mainWindow.webContents, () => tabManager, () => mainWindow, true)
 
   // Forward tab state changes to renderer
   tabManager.on('changed', (tabs, activeId) => {

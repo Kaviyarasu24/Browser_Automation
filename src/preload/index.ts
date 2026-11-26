@@ -25,6 +25,7 @@ export interface EdithApi {
     list: () => Promise<{ tabs: TabState[]; activeId: string | null }>
     setBounds: (bounds: ContentBounds) => void
     onUpdated: (callback: (data: { tabs: TabState[]; activeId: string | null }) => void) => () => void
+    onFocusOmnibox: (callback: () => void) => () => void
   }
   config: {
     get: () => Promise<PublicConfig>
@@ -123,6 +124,13 @@ const api: EdithApi = {
       ipcRenderer.on('tabs:updated', handler)
       return () => {
         ipcRenderer.removeListener('tabs:updated', handler)
+      }
+    },
+    onFocusOmnibox: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('browser:focusOmnibox', handler)
+      return () => {
+        ipcRenderer.removeListener('browser:focusOmnibox', handler)
       }
     }
   },

@@ -1,9 +1,10 @@
-import { WebContentsView, type WebContents, type Session } from 'electron'
+import { WebContentsView, type BrowserWindow, type WebContents, type Session } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import type { ContentBounds, TabState } from '../../shared/types.js'
 import { BROWSER_PARTITION, browserUserAgent } from './session.js'
 import { ensureCursor } from './cursor.js'
+import { attachBrowserShortcuts, attachContextMenu } from './shortcuts.js'
 import { getSettings } from '../settings.js'
 
 export function isNewTabUrl(url: string): boolean {
@@ -47,7 +48,8 @@ export class TabManager extends EventEmitter {
 
   constructor(
     private readonly contentView: Electron.View,
-    private readonly ua: string
+    private readonly ua: string,
+    private readonly getMainWindow: () => BrowserWindow | null = () => null
   ) {
     super()
   }
@@ -232,6 +234,9 @@ export class TabManager extends EventEmitter {
 
   private wireEvents(tab: Tab): void {
     const wc = tab.view.webContents
+
+    attachBrowserShortcuts(wc, () => this, this.getMainWindow)
+    attachContextMenu(wc, () => this, this.getMainWindow, false)
 
     wc.on('did-start-loading', () => {
       tab.loading = true

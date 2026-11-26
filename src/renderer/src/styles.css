@@ -68,6 +68,16 @@ html, body, #root {
   -webkit-font-smoothing: antialiased;
 }
 
+.copilot-content,
+.settings-main,
+.newtab-dashboard,
+input,
+textarea,
+code,
+pre {
+  user-select: text;
+}
+
 /* ── App Shell ─────────────────────────────────────────────────────── */
 
 .app-container {
