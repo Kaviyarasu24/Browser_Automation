@@ -5,6 +5,10 @@ import type { ContentBounds, TabState } from '../../shared/types.js'
 import { BROWSER_PARTITION, browserUserAgent } from './session.js'
 import { ensureCursor } from './cursor.js'
 
+export function isNewTabUrl(url: string): boolean {
+  return !url || url === 'about:blank' || url === 'edith://newtab'
+}
+
 export interface Tab {
   id: string
   view: WebContentsView
@@ -93,7 +97,9 @@ export class TabManager extends EventEmitter {
     if (!tab) return
 
     this.tabs.delete(id)
-    this.contentView.removeChildView(tab.view)
+    if (this.contentView.children.includes(tab.view)) {
+      this.contentView.removeChildView(tab.view)
+    }
 
     // destroy() frees the renderer process. Without it the webContents leaks
     // and keeps its process alive.
@@ -119,12 +125,13 @@ export class TabManager extends EventEmitter {
     // Detach the previous tab, keeping its WebContents alive.
     if (this.activeId && this.activeId !== id) {
       const prev = this.tabs.get(this.activeId)
-      if (prev) this.contentView.removeChildView(prev.view)
+      if (prev && this.contentView.children.includes(prev.view)) {
+        this.contentView.removeChildView(prev.view)
+      }
     }
 
     this.activeId = id
-    this.contentView.addChildView(tab.view)
-    tab.view.setBounds(this.bounds)
+    this.syncActiveView()
     this.emitState()
   }
 
@@ -178,7 +185,9 @@ export class TabManager extends EventEmitter {
     }
 
     const active = this.getActive()
-    if (active) active.view.setBounds(this.bounds)
+    if (active && !isNewTabUrl(active.url)) {
+      active.view.setBounds(this.bounds)
+    }
   }
 
   getBounds(): ContentBounds {
@@ -190,7 +199,14 @@ export class TabManager extends EventEmitter {
   navigate(id: string, url: string): void {
     const tab = this.tabs.get(id)
     if (!tab) return
-    void tab.view.webContents.loadURL(url).catch((err: Error) => {
+    if (isNewTabUrl(url)) {
+      tab.url = 'about:blank'
+      tab.title = 'New Tab'
+      tab.favicon = null
+      if (id === this.activeId) this.syncActiveView()
+      this.emitState()
+    }
+    void tab.view.webContents.loadURL(isNewTabUrl(url) ? 'about:blank' : url).catch((err: Error) => {
       console.warn(`[tabs] navigate failed:`, err.message)
     })
   }
@@ -222,13 +238,19 @@ export class TabManager extends EventEmitter {
 
     const syncUrl = (url: string) => {
       tab.url = url
-      // A page that never fires page-title-updated still needs a label.
-      if (tab.title === 'New Tab' || tab.title === 'Untitled') {
+      if (isNewTabUrl(url)) {
+        tab.title = 'New Tab'
+        tab.favicon = null
+      } else if (tab.title === 'New Tab' || tab.title === 'Untitled') {
+        // A page that never fires page-title-updated still needs a label.
         try {
           tab.title = new URL(url).hostname || url
         } catch {
           tab.title = url
         }
+      }
+      if (tab.id === this.activeId) {
+        this.syncActiveView()
       }
       this.emitState()
     }
@@ -252,6 +274,19 @@ export class TabManager extends EventEmitter {
       if (!isMainFrame || code === -3) return
       console.warn(`[tabs] ${desc} (${code}) for ${url}`)
     })
+  }
+
+  private syncActiveView(): void {
+    const active = this.getActive()
+    if (!active) return
+    const isNewTab = isNewTabUrl(active.url)
+    const isAttached = this.contentView.children.includes(active.view)
+    if (isNewTab) {
+      if (isAttached) this.contentView.removeChildView(active.view)
+    } else {
+      if (!isAttached) this.contentView.addChildView(active.view)
+      active.view.setBounds(this.bounds)
+    }
   }
 
   private emitState(): void {

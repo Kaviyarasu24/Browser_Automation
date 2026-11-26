@@ -48,10 +48,10 @@ This document tracks upcoming features, architectural improvements, and planned 
 ---
 
 ## 🏠 5. Custom "New Tab" Dashboard
-> **Status: ⏳ Pending**
-- [ ] **Branded Start Page**: Replace `about:blank` with a clean, modern EDITH start page.
-- [ ] **Quick Action Pills**: One-click action shortcuts (e.g. *"Check Cricket Scores"*, *"Trending Tech News"*, *"GitHub Repos"*).
-- [ ] **Status & Health Widget**: Live display of configured LLM provider, model latency, and active cookies/sessions.
+> **Status: ✅ Completed**
+- [x] **Branded Start Page**: Replace `about:blank` with a clean, modern EDITH start page.
+- [x] **Quick Action Pills**: One-click action shortcuts (e.g. *"Check Cricket Scores"*, *"Trending Tech News"*, *"GitHub Repos"*).
+- [x] **Status & Health Widget**: Live display of configured LLM provider, model latency, and active cookies/sessions.
 
 ---
 

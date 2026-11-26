@@ -1508,3 +1508,310 @@ html, body, #root {
   opacity: 0.9;
 }
 
+
+/* ── Custom New Tab Dashboard (EDITH Browser) ──────────────────────── */
+
+.newtab-dashboard {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  color: var(--text-main);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 18px 28px 40px;
+}
+
+.newtab-topbar {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 48px;
+}
+
+.newtab-time {
+  font-size: 12px;
+  color: var(--text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.newtab-inner {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.newtab-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.newtab-wordmark {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--text-main);
+}
+
+.newtab-search-form {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-omnibox);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 6px 8px 6px 14px;
+  transition: border-color 0.12s;
+}
+
+.newtab-search-form:focus-within {
+  border-color: var(--border-hover);
+}
+
+.newtab-search-icon {
+  color: var(--text-subtle);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.newtab-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-main);
+  font-size: 14px;
+  padding: 6px 4px;
+}
+
+.newtab-search-input::placeholder {
+  color: var(--text-subtle);
+}
+
+.newtab-mode-toggle {
+  display: flex;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  padding: 2px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.newtab-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 5px 9px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.newtab-mode-btn:hover {
+  color: var(--text-main);
+}
+
+.newtab-mode-btn.active {
+  background: var(--bg-tertiary);
+  color: var(--text-main);
+}
+
+.newtab-shortcuts {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.newtab-shortcut-tile {
+  width: 84px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.newtab-shortcut-tile:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-subtle);
+}
+
+.newtab-shortcut-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  font-weight: 600;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.newtab-shortcut-title {
+  font-size: 11px;
+  color: var(--text-muted);
+  max-width: 76px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.newtab-actions-row {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.newtab-action-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.newtab-action-link:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-hover);
+  color: var(--text-main);
+}
+
+.newtab-status-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.newtab-status-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.newtab-status-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.newtab-status-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.newtab-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.newtab-dot.ok {
+  color: var(--success);
+}
+
+.newtab-dot.warn {
+  color: var(--warning);
+}
+
+.newtab-status-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.newtab-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+  gap: 12px;
+}
+
+.newtab-status-row code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-main);
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.newtab-status-foot {
+  display: flex;
+  gap: 14px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.newtab-text-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+
+.newtab-text-btn:hover:not(:disabled) {
+  color: var(--text-main);
+}
+
+.newtab-text-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.text-success {
+  color: var(--success);
+}
+
+.text-error {
+  color: var(--error);
+}

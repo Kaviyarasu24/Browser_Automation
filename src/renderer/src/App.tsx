@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
+import { NewTabDashboard } from './components/NewTabDashboard.js'
 import type {
   AgentEvent,
   ContentBounds,
@@ -290,24 +291,29 @@ export function App(): React.JSX.Element {
     feedEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [events])
 
+  const resolveTargetUrl = (raw: string): string => {
+    const target = raw.trim()
+    if (!/^https?:\/\//i.test(target) && !target.startsWith('about:') && !target.startsWith('file:')) {
+      if (target.includes('.') && !target.includes(' ')) {
+        return `https://${target}`
+      }
+      return `https://www.google.com/search?q=${encodeURIComponent(target)}`
+    }
+    return target
+  }
+
+  const navigateActiveTab = (raw: string) => {
+    if (!activeTabId || !raw.trim()) return
+    window.api?.tabs.navigate(activeTabId, resolveTargetUrl(raw))
+  }
+
   const handleNavigate = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!activeTabId || !urlInput.trim()) return
-    let target = urlInput.trim()
-
-    // Smart omnibox resolution
-    if (!/^https?:\/\//i.test(target) && !target.startsWith('about:')) {
-      if (target.includes('.') && !target.includes(' ')) {
-        target = `https://${target}`
-      } else {
-        target = `https://www.google.com/search?q=${encodeURIComponent(target)}`
-      }
-    }
-    window.api?.tabs.navigate(activeTabId, target)
+    navigateActiveTab(urlInput)
   }
 
   const handleCreateTab = () => {
-    window.api?.tabs.create('https://www.google.com')
+    window.api?.tabs.create('about:blank')
   }
 
   const handleCloseTab = (e: React.MouseEvent, id: string) => {
@@ -317,7 +323,7 @@ export function App(): React.JSX.Element {
 
   const handleGoHome = () => {
     if (activeTabId) {
-      window.api?.tabs.navigate(activeTabId, 'https://www.google.com')
+      window.api?.tabs.navigate(activeTabId, 'about:blank')
     }
   }
 
@@ -668,7 +674,33 @@ export function App(): React.JSX.Element {
       {/* Main Viewport */}
       <div className="main-viewport">
         {/* Placeholder container where TabManager positions active WebContentsView */}
-        <div className="web-content-placeholder" ref={contentRef} />
+        <div className="web-content-placeholder" ref={contentRef}>
+          {(!activeTab ||
+            !activeTab.url ||
+            activeTab.url === 'about:blank' ||
+            activeTab.url === 'edith://newtab') && (
+            <NewTabDashboard
+              bookmarks={[]}
+              onNavigate={(urlOrQuery) => navigateActiveTab(urlOrQuery)}
+              onRunAgent={(prompt) => {
+                setSidebarOpen(true)
+                void handleRunAgent(prompt)
+              }}
+              onOpenSettings={() => {
+                setSidebarOpen(true)
+                handleOpenSettings()
+              }}
+              onOpenQueue={() => {
+                setSidebarOpen(true)
+                setShowQueueDrawer(true)
+                setShowDownloadsDrawer(false)
+                setShowHistoryDrawer(false)
+                setShowSettingsDrawer(false)
+                setShowMoreMenu(false)
+              }}
+            />
+          )}
+        </div>
 
         {/* Microsoft Edge Copilot Style Side Panel */}
         {sidebarOpen && (
