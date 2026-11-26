@@ -1,0 +1,70 @@
+{
+  "fullName": "Jane Doe",
+  "firstName": "Jane",
+  "lastName": "Doe",
+  "email": "jane.doe@example.com",
+  "phone": "+1-555-0199",
+  "address": "123 Innovation Way",
+  "city": "San Francisco",
+  "state": "California",
+  "country": "United States",
+  "zip": "94105",
+  "linkedin": "https://linkedin.com/in/janedoe",
+  "github": "https://github.com/janedoe",
+  "portfolio": "https://janedoe.dev",
+  "education": [
+    {
+      "school": "University of California, Berkeley",
+      "degree": "Bachelor of Science",
+      "fieldOfStudy": "Computer Science",
+      "startDate": "2018",
+      "endDate": "2022",
+      "gpa": "3.8"
+    }
+  ],
+  "skills": [
+    "TypeScript",
+    "React",
+    "Node.js",
+    "Python",
+    "Electron",
+    "PostgreSQL",
+    "Docker",
+    "AWS"
+  ],
+  "experience": [
+    {
+      "company": "Acme Technologies",
+      "title": "Senior Software Engineer",
+      "location": "San Francisco, CA",
+      "startDate": "2022-07",
+      "endDate": "Present",
+      "current": true,
+      "description": "Led full-stack architecture for enterprise web applications, built distributed systems, and improved frontend performance by 40%."
+    },
+    {
+      "company": "Beta Labs",
+      "title": "Software Engineer Intern",
+      "location": "San Francisco, CA",
+      "startDate": "2021-05",
+      "endDate": "2021-08",
+      "current": false,
+      "description": "Developed internal tooling and automated integration testing pipelines."
+    }
+  ],
+  "summary": "Experienced Full-Stack Software Engineer with 3+ years building high-performance web applications and desktop tooling in TypeScript, React, and Node.js.",
+  "noticePeriod": "2 weeks",
+  "currentCTC": "$140,000",
+  "expectedCTC": "$160,000",
+  "workAuthorization": "Authorized to work in the US without sponsorship",
+  "willingToRelocate": "Yes",
+  "resumePath": "C:\\Users\\user\\Documents\\Jane_Doe_Resume.pdf",
+  "coverLetterTemplate": "Dear Hiring Team at {{company}},\n\nI am thrilled to apply for the {{role}} position. With my background in {{skills}}, I am confident in delivering impactful results for your engineering team.\n\nBest regards,\nJane Doe",
+  "customAnswers": {
+    "hear_about_us": "LinkedIn Job Board",
+    "preferred_pronouns": "She/Her",
+    "clearance": "None",
+    "highest_education": "Bachelor's Degree",
+    "start_date": "Immediate"
+  }
+}

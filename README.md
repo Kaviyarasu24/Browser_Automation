@@ -10,6 +10,9 @@ Because it runs inside your genuine desktop session with stored cookies and loca
 
 ## ✨ Features
 
+- **Universal Form-Filling System**: Automatically maps, fills, and validates job applications across any website or ATS. Features three-tier mapping (Rule-based -> Cached answers -> LLM distillation), CDP-based file uploading for resumes/CVs, custom dropdown interaction (React-Select, Workday, Ant Design), multi-step wizard navigation, and human review gates.
+- **Job Application Queue & Tracker**: Batch process pasted application links sequentially with live status tracking (`queued`, `filling`, `needs_review`, `submitted`, `skipped`, `failed`) and automatic persistence to `Downloads/Strawberry/applications.csv`.
+- **ATS Adapters Suite**: Built-in support and quirk handlers for Greenhouse, Lever, Workday, Ashby, SmartRecruiters, LinkedIn Easy Apply, and Naukri.
 - **Speed & Token Optimization Suite**: Auto-reads updated DOM snapshots on navigations and clicks to cut steps in half, prunes historical DOM snapshots from conversation history to reduce tokens by ~70%, and displays a live token counter in the sidebar.
 - **File Download & Export Manager**: Intercepts browser download events seamlessly to save PDFs, invoices, CSVs, and images straight into `Downloads/Strawberry/` without blocking dialogs. Includes a top-bar downloads popover, file reveal/open actions, and an agent tool (`export_data`) with one-click pills to save reports as Markdown, JSON, CSV, or Text.
 - **Persistent Real-User Sessions**: Uses Electron's persistent storage partition (`persist:strawberry`) and a desktop Chrome User-Agent string. Your logins, cookies, and local storage persist across sessions and app restarts.

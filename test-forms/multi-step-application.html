@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GlobalTech - Staff Engineer Multi-Step Application</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f19; color: #f8fafc; padding: 40px; margin: 0; }
+    .container { max-width: 650px; margin: 0 auto; background: #1a2234; padding: 32px; border-radius: 12px; border: 1px solid #2d3748; }
+    h1 { margin-top: 0; font-size: 22px; color: #fff; }
+    .steps-indicator { display: flex; gap: 8px; margin-bottom: 24px; }
+    .step-pill { flex: 1; height: 6px; border-radius: 3px; background: #2d3748; }
+    .step-pill.active { background: #ff3366; }
+    .step-pill.completed { background: #10b981; }
+    .form-group { margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
+    label { font-size: 13px; font-weight: 600; color: #cbd5e1; }
+    input[type="text"], input[type="email"], input[type="tel"], select, textarea {
+      background: #0b0f19; border: 1px solid #4a5568; border-radius: 6px; padding: 10px 12px; color: #fff; font-size: 13px;
+    }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: #ff3366; }
+    .btn-nav { background: #ff3366; color: #fff; border: none; padding: 12px 24px; font-size: 14px; font-weight: 700; border-radius: 6px; cursor: pointer; margin-top: 16px; width: 100%; }
+    .btn-nav:hover { background: #e02856; }
+    .step-section { display: none; }
+    .step-section.active { display: block; }
+    .validation-alert { color: #f43f5e; font-size: 12px; margin-top: 8px; display: none; font-weight: 600; }
+    .success-card { display: none; background: #064e3b; border: 1px solid #059669; padding: 24px; border-radius: 8px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="wizard-form">
+      <h1>Staff Frontend Engineer Application</h1>
+      <div style="font-size: 13px; color: #94a3b8; margin-bottom: 16px;">Step <span id="current-step-num">1</span> of 3</div>
+      
+      <div class="steps-indicator">
+        <div class="step-pill active" id="pill-1"></div>
+        <div class="step-pill" id="pill-2"></div>
+        <div class="step-pill" id="pill-3"></div>
+      </div>
+
+      <!-- Step 1: Personal Info -->
+      <div class="step-section active" id="step-1">
+        <div class="form-group">
+          <label for="fullName">Full Name *</label>
+          <input type="text" id="fullName" name="fullName" required placeholder="Jane Doe">
+        </div>
+        <div class="form-group">
+          <label for="email">Email Address *</label>
+          <input type="email" id="email" name="email" required placeholder="jane@example.com">
+        </div>
+        <div class="form-group">
+          <label for="phone">Phone Number *</label>
+          <input type="tel" id="phone" name="phone" required placeholder="+1-555-0199">
+        </div>
+        <div class="form-group">
+          <label for="city">City / Location *</label>
+          <input type="text" id="city" name="city" required placeholder="San Francisco, CA">
+        </div>
+        <div class="validation-alert" id="err-step-1">Please fill in all required fields.</div>
+        <button type="button" class="btn-nav" id="btn-next-1" onclick="goToStep(2)">Save & Continue</button>
+      </div>
+
+      <!-- Step 2: Experience & Resume -->
+      <div class="step-section" id="step-2">
+        <div class="form-group">
+          <label for="linkedin">LinkedIn Profile *</label>
+          <input type="text" id="linkedin" name="linkedin" required placeholder="https://linkedin.com/in/username">
+        </div>
+        <div class="form-group">
+          <label for="github">GitHub Profile</label>
+          <input type="text" id="github" name="github" placeholder="https://github.com/username">
+        </div>
+        <div class="form-group">
+          <label for="skills">Key Technical Skills *</label>
+          <input type="text" id="skills" name="skills" required placeholder="TypeScript, React, Electron">
+        </div>
+        <div class="form-group">
+          <label for="resume">Attach Resume / CV *</label>
+          <input type="file" id="resume" name="resume" required>
+        </div>
+        <div class="validation-alert" id="err-step-2">Please fill in all required fields and upload resume.</div>
+        <button type="button" class="btn-nav" id="btn-next-2" onclick="goToStep(3)">Save & Continue</button>
+      </div>
+
+      <!-- Step 3: Compensation & Final Details -->
+      <div class="step-section" id="step-3">
+        <div class="form-group">
+          <label for="expectedCTC">Expected Annual Compensation *</label>
+          <input type="text" id="expectedCTC" name="expectedCTC" required placeholder="$160,000">
+        </div>
+        <div class="form-group">
+          <label for="noticePeriod">Notice Period *</label>
+          <select id="noticePeriod" name="noticePeriod" required>
+            <option value="">Select notice</option>
+            <option value="Immediate">Immediate</option>
+            <option value="2 weeks">2 weeks</option>
+            <option value="1 month">1 month</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="workAuth">Are you authorized to work in this location? *</label>
+          <select id="workAuth" name="workAuth" required>
+            <option value="">Select authorization</option>
+            <option value="Yes">Yes, authorized without sponsorship</option>
+            <option value="No">No, sponsorship required</option>
+          </select>
+        </div>
+        <div class="validation-alert" id="err-step-3">Please fill in all required fields.</div>
+        <button type="button" class="btn-nav" id="btn-submit" onclick="submitApplication()">Submit Application</button>
+      </div>
+    </div>
+
+    <div id="success-screen" class="success-card">
+      <h2>🎉 Application Successfully Submitted!</h2>
+      <p>Your application to GlobalTech has been received.</p>
+    </div>
+  </div>
+
+  <script>
+    let currentStep = 1;
+    function goToStep(target) {
+      // Validate current step
+      if (currentStep === 1) {
+        const name = document.getElementById('fullName').value.trim();
+        const email = document.getElementById('email').value.trim();
+        const phone = document.getElementById('phone').value.trim();
+        if (!name || !email || !phone) {
+          document.getElementById('err-step-1').style.display = 'block';
+          return;
+        }
+        document.getElementById('err-step-1').style.display = 'none';
+      } else if (currentStep === 2) {
+        const linkedin = document.getElementById('linkedin').value.trim();
+        const resume = document.getElementById('resume').files.length > 0;
+        if (!linkedin) {
+          document.getElementById('err-step-2').style.display = 'block';
+          return;
+        }
+        document.getElementById('err-step-2').style.display = 'none';
+      }
+
+      document.getElementById('step-' + currentStep).classList.remove('active');
+      document.getElementById('pill-' + currentStep).classList.remove('active');
+      document.getElementById('pill-' + currentStep).classList.add('completed');
+
+      currentStep = target;
+      document.getElementById('step-' + currentStep).classList.add('active');
+      document.getElementById('pill-' + currentStep).classList.add('active');
+      document.getElementById('current-step-num').textContent = currentStep;
+    }
+
+    function submitApplication() {
+      const ctc = document.getElementById('expectedCTC').value.trim();
+      const notice = document.getElementById('noticePeriod').value;
+      if (!ctc || !notice) {
+        document.getElementById('err-step-3').style.display = 'block';
+        return;
+      }
+      document.getElementById('wizard-form').style.display = 'none';
+      document.getElementById('success-screen').style.display = 'block';
+      document.title = 'Application Submitted - GlobalTech';
+    }
+  </script>
+</body>
+</html>

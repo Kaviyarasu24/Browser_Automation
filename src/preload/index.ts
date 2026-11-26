@@ -1,11 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AgentEvent,
+  ApplicationTrackerRecord,
   ContentBounds,
   DownloadRecord,
+  JobQueueItem,
   PublicConfig,
   TabState,
-  TaskHistoryItem
+  TaskHistoryItem,
+  UserProfile
 } from '../shared/types.js'
 
 export interface StrawberryApi {
@@ -39,7 +42,25 @@ export interface StrawberryApi {
     run: (task: string) => Promise<{ ok: boolean; error?: string }>
     cancel: () => Promise<{ ok: boolean }>
     confirm: (id: string, approved: boolean) => Promise<{ ok: boolean }>
+    reviewResponse: (
+      id: string,
+      response: { approved: boolean; editedFields?: Record<string, string | boolean> }
+    ) => Promise<{ ok: boolean }>
+    interventionResolved: (id: string) => Promise<{ ok: boolean }>
     onEvent: (callback: (event: AgentEvent) => void) => () => void
+  }
+  profile: {
+    get: () => Promise<UserProfile | null>
+    save: (profile: UserProfile) => Promise<{ ok: boolean; profile: UserProfile | null }>
+  }
+  tracker: {
+    list: () => Promise<ApplicationTrackerRecord[]>
+    open: () => Promise<boolean>
+  }
+  queue: {
+    run: (data: { urls: string[]; dryRun?: boolean }) => Promise<{ ok: boolean; error?: string }>
+    cancel: () => Promise<{ ok: boolean }>
+    onUpdated: (callback: (items: JobQueueItem[]) => void) => () => void
   }
   downloads: {
     list: () => Promise<DownloadRecord[]>
@@ -94,11 +115,32 @@ const api: StrawberryApi = {
     run: (task: string) => ipcRenderer.invoke('agent:run', task),
     cancel: () => ipcRenderer.invoke('agent:cancel'),
     confirm: (id: string, approved: boolean) => ipcRenderer.invoke('agent:confirm', id, approved),
+    reviewResponse: (id, response) => ipcRenderer.invoke('agent:reviewResponse', id, response),
+    interventionResolved: (id) => ipcRenderer.invoke('agent:interventionResolved', id),
     onEvent: (callback) => {
       const handler = (_event: Electron.IpcRendererEvent, event: AgentEvent) => callback(event)
       ipcRenderer.on('agent:event', handler)
       return () => {
         ipcRenderer.removeListener('agent:event', handler)
+      }
+    }
+  },
+  profile: {
+    get: () => ipcRenderer.invoke('profile:get'),
+    save: (profile) => ipcRenderer.invoke('profile:save', profile)
+  },
+  tracker: {
+    list: () => ipcRenderer.invoke('tracker:list'),
+    open: () => ipcRenderer.invoke('tracker:open')
+  },
+  queue: {
+    run: (data) => ipcRenderer.invoke('queue:run', data),
+    cancel: () => ipcRenderer.invoke('queue:cancel'),
+    onUpdated: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, items: JobQueueItem[]) => callback(items)
+      ipcRenderer.on('queue:updated', handler)
+      return () => {
+        ipcRenderer.removeListener('queue:updated', handler)
       }
     }
   },
@@ -120,4 +162,5 @@ const api: StrawberryApi = {
 }
 
 contextBridge.exposeInMainWorld('api', api)
+
 

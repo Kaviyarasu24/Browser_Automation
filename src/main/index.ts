@@ -18,12 +18,28 @@ import {
   showInDownloadFolder,
   exportDataToFile
 } from './browser/downloads.js'
-import type { ContentBounds, AgentEvent, PublicConfig, TaskHistoryItem } from '../shared/types.js'
+import { loadProfile, saveProfile } from './profile/profile.js'
+import { listApplications, openApplicationsTracker } from './tracker/applications.js'
+import type {
+  ContentBounds,
+  AgentEvent,
+  PublicConfig,
+  TaskHistoryItem,
+  UserProfile,
+  JobQueueItem,
+  FormFieldReviewItem
+} from '../shared/types.js'
 
 let mainWindow: BrowserWindow | null = null
 let tabManager: TabManager | null = null
 let activeAgentAbort: AbortController | null = null
+let activeQueueAbort: AbortController | null = null
 const pendingConfirmations = new Map<string, (approved: boolean) => void>()
+const pendingReviews = new Map<
+  string,
+  (res: { approved: boolean; editedFields?: Record<string, string | boolean> }) => void
+>()
+const pendingInterventions = new Map<string, () => void>()
 
 function createWindow(): void {
   const cfg = getConfig()
@@ -253,6 +269,54 @@ function setupIpc(): void {
               })
             })
           },
+          reviewForm: (fields) => {
+            const id = randomUUID()
+            return new Promise<{
+              approved: boolean
+              editedFields?: Record<string, string | boolean>
+            }>((resolve) => {
+              const cleanup = () => {
+                pendingReviews.delete(id)
+              }
+              pendingReviews.set(id, (res) => {
+                cleanup()
+                resolve(res)
+              })
+              emit({
+                type: 'form_review_required',
+                id,
+                step: 0,
+                fields
+              })
+              abortController.signal.addEventListener('abort', () => {
+                cleanup()
+                resolve({ approved: false })
+              })
+            })
+          },
+          waitForIntervention: (info) => {
+            const id = randomUUID()
+            return new Promise<boolean>((resolve) => {
+              const cleanup = () => {
+                pendingInterventions.delete(id)
+              }
+              pendingInterventions.set(id, () => {
+                cleanup()
+                resolve(true)
+              })
+              emit({
+                type: 'user_intervention_required',
+                id,
+                reason: info.reason,
+                title: info.title,
+                message: info.message
+              })
+              abortController.signal.addEventListener('abort', () => {
+                cleanup()
+                resolve(false)
+              })
+            })
+          },
           signal: abortController.signal
         })
       } finally {
@@ -263,6 +327,14 @@ function setupIpc(): void {
           resolve(false)
         }
         pendingConfirmations.clear()
+        for (const resolve of pendingReviews.values()) {
+          resolve({ approved: false })
+        }
+        pendingReviews.clear()
+        for (const resolve of pendingInterventions.values()) {
+          resolve()
+        }
+        pendingInterventions.clear()
 
         // Persist completed/aborted task to history
         try {
@@ -314,6 +386,33 @@ function setupIpc(): void {
     return { ok: false }
   })
 
+  ipcMain.handle(
+    'agent:reviewResponse',
+    (
+      _event,
+      id: string,
+      response: { approved: boolean; editedFields?: Record<string, string | boolean> }
+    ) => {
+      const resolve = pendingReviews.get(id)
+      if (resolve) {
+        resolve(response)
+        pendingReviews.delete(id)
+        return { ok: true }
+      }
+      return { ok: false }
+    }
+  )
+
+  ipcMain.handle('agent:interventionResolved', (_event, id: string) => {
+    const resolve = pendingInterventions.get(id)
+    if (resolve) {
+      resolve()
+      pendingInterventions.delete(id)
+      return { ok: true }
+    }
+    return { ok: false }
+  })
+
   ipcMain.handle('agent:cancel', () => {
     if (activeAgentAbort) {
       activeAgentAbort.abort()
@@ -322,9 +421,195 @@ function setupIpc(): void {
         resolve(false)
       }
       pendingConfirmations.clear()
+      for (const resolve of pendingReviews.values()) {
+        resolve({ approved: false })
+      }
+      pendingReviews.clear()
+      for (const resolve of pendingInterventions.values()) {
+        resolve()
+      }
+      pendingInterventions.clear()
       return { ok: true }
     }
     return { ok: false }
+  })
+
+  // Profile Management
+  ipcMain.handle('profile:get', () => {
+    return loadProfile()
+  })
+
+  ipcMain.handle('profile:save', (_event, profile: UserProfile) => {
+    const ok = saveProfile(profile)
+    return { ok, profile: loadProfile() }
+  })
+
+  // Application Tracker
+  ipcMain.handle('tracker:list', () => {
+    return listApplications()
+  })
+
+  ipcMain.handle('tracker:open', () => {
+    openApplicationsTracker()
+    return true
+  })
+
+  // Job Queue Management
+  ipcMain.handle('queue:run', async (_event, data: { urls: string[]; dryRun?: boolean }) => {
+    if (!tabManager) return { ok: false, error: 'Browser not initialized' }
+    if (activeQueueAbort || activeAgentAbort) {
+      return { ok: false, error: 'An agent task or queue is already running' }
+    }
+
+    const { urls, dryRun } = data
+    if (!urls || urls.length === 0) return { ok: false, error: 'No URLs provided' }
+
+    const queueAbort = new AbortController()
+    activeQueueAbort = queueAbort
+
+    void (async () => {
+      const items: JobQueueItem[] = urls.map((u) => ({
+        id: randomUUID(),
+        url: u.trim(),
+        status: 'queued',
+        timestamp: Date.now(),
+        updatedAt: Date.now()
+      }))
+
+      const notifyQueue = () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('queue:updated', items)
+        }
+      }
+
+      notifyQueue()
+
+      for (let i = 0; i < items.length; i++) {
+        if (queueAbort.signal.aborted) break
+        const item = items[i]!
+        item.status = 'filling'
+        item.updatedAt = Date.now()
+        notifyQueue()
+
+        try {
+          const cfg = getConfig()
+          let activeTab = tabManager!.getActive()
+          if (!activeTab) {
+            tabManager!.create(item.url, true)
+            activeTab = tabManager!.getActive()
+          } else {
+            tabManager!.navigate(activeTab.id, item.url)
+          }
+
+          // Wait for page navigation to settle
+          await new Promise((r) => setTimeout(r, 1200))
+
+          const task = `Navigate to ${item.url} and fill the job application form. Upload resume/documents, accurately answer all required questions using candidate profile and cached answers, review and complete the application.`
+
+          const singleAbort = new AbortController()
+          activeAgentAbort = singleAbort
+
+          const emit = (event: AgentEvent) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('agent:event', event)
+            }
+          }
+
+          await runAgent({
+            task,
+            cfg,
+            tabs: tabManager!,
+            emit,
+            dryRun: Boolean(dryRun),
+            confirm: (info) => {
+              const id = randomUUID()
+              return new Promise<boolean>((resolve) => {
+                pendingConfirmations.set(id, (appr) => {
+                  pendingConfirmations.delete(id)
+                  resolve(appr)
+                })
+                emit({
+                  type: 'confirmation_required',
+                  id,
+                  step: 0,
+                  title: info.title,
+                  description: info.description,
+                  action: info.action,
+                  target: info.target
+                })
+              })
+            },
+            reviewForm: (fields) => {
+              const id = randomUUID()
+              return new Promise((resolve) => {
+                pendingReviews.set(id, (res) => {
+                  pendingReviews.delete(id)
+                  resolve(res)
+                })
+                emit({
+                  type: 'form_review_required',
+                  id,
+                  step: 0,
+                  fields
+                })
+              })
+            },
+            waitForIntervention: (info) => {
+              const id = randomUUID()
+              return new Promise((resolve) => {
+                pendingInterventions.set(id, () => {
+                  pendingInterventions.delete(id)
+                  resolve(true)
+                })
+                emit({
+                  type: 'user_intervention_required',
+                  id,
+                  reason: info.reason,
+                  title: info.title,
+                  message: info.message
+                })
+              })
+            },
+            onJobStatusChange: (status, notes) => {
+              item.status = status
+              if (notes) item.notes = notes
+              item.updatedAt = Date.now()
+              notifyQueue()
+            },
+            signal: singleAbort.signal
+          })
+
+          if (item.status === 'filling') {
+            item.status = 'submitted'
+          }
+        } catch (err) {
+          console.warn(`[queue] Job ${item.url} encountered error:`, (err as Error).message)
+          item.status = 'failed'
+          item.error = (err as Error).message
+        } finally {
+          activeAgentAbort = null
+          item.updatedAt = Date.now()
+          notifyQueue()
+          await new Promise((r) => setTimeout(r, 1000))
+        }
+      }
+
+      activeQueueAbort = null
+    })()
+
+    return { ok: true }
+  })
+
+  ipcMain.handle('queue:cancel', () => {
+    if (activeQueueAbort) {
+      activeQueueAbort.abort()
+      activeQueueAbort = null
+    }
+    if (activeAgentAbort) {
+      activeAgentAbort.abort()
+      activeAgentAbort = null
+    }
+    return { ok: true }
   })
 
   // Downloads & File Exports

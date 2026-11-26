@@ -41,7 +41,7 @@ function getCursorScript(initialX: number, initialY: number): string {
       width: 32px;
       height: 32px;
       z-index: 2147483647;
-      transform: translate3d(\${${Math.round(initialX)}}px, \${${Math.round(initialY)}}px, 0);
+      transform: translate3d(${Math.round(initialX)}px, ${Math.round(initialY)}px, 0);
       transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
       will-change: transform;
       filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.65));
@@ -199,8 +199,23 @@ function getCursorScript(initialX: number, initialY: number): string {
 
   window.__strawberryCursor = {
     moveTo(x, y) {
+      if (!host || !host.isConnected) {
+        if (document.body) {
+          document.body.appendChild(host);
+        } else if (document.documentElement) {
+          document.documentElement.appendChild(host);
+        }
+      }
+      if (host) {
+        host.style.display = 'block';
+        host.style.opacity = '1';
+        host.style.visibility = 'visible';
+      }
       if (wrapper) {
-        wrapper.style.transform = \`translate3d(\${Math.round(x)}px, \${Math.round(y)}px, 0)\`;
+        wrapper.style.display = 'block';
+        wrapper.style.opacity = '1';
+        wrapper.style.visibility = 'visible';
+        wrapper.style.transform = 'translate3d(' + Math.round(x) + 'px, ' + Math.round(y) + 'px, 0)';
       }
     },
     click(x, y) {
@@ -211,8 +226,8 @@ function getCursorScript(initialX: number, initialY: number): string {
       }
       const ripple = document.createElement('div');
       ripple.className = 'ripple';
-      ripple.style.left = \`\${Math.round(x)}px\`;
-      ripple.style.top = \`\${Math.round(y)}px\`;
+      ripple.style.left = Math.round(x) + 'px';
+      ripple.style.top = Math.round(y) + 'px';
       shadow.appendChild(ripple);
       setTimeout(() => ripple.remove(), 550);
     },
@@ -220,10 +235,10 @@ function getCursorScript(initialX: number, initialY: number): string {
       if (activeHighlight) activeHighlight.remove();
       const box = document.createElement('div');
       box.className = 'highlight-box';
-      box.style.left = \`\${Math.round(x - w / 2)}px\`;
-      box.style.top = \`\${Math.round(y - h / 2)}px\`;
-      box.style.width = \`\${Math.max(w, 24)}px\`;
-      box.style.height = \`\${Math.max(h, 24)}px\`;
+      box.style.left = Math.round(x - w / 2) + 'px';
+      box.style.top = Math.round(y - h / 2) + 'px';
+      box.style.width = Math.max(w, 24) + 'px';
+      box.style.height = Math.max(h, 24) + 'px';
       shadow.appendChild(box);
       activeHighlight = box;
       setTimeout(() => {
@@ -295,13 +310,14 @@ export function stopCursorHeartbeat(): void {
   activeWebContents = null
 }
 
-export async function animateMouseMove(wc: WebContents, x: number, y: number): Promise<void> {
+export async function animateMouseMove(wc: WebContents, x: number, y: number, wait = true): Promise<void> {
   if (wc.isDestroyed()) return
   lastX = x
   lastY = y
   try {
     await ensureCursor(wc)
     await wc.executeJavaScript(`window.__strawberryCursor?.moveTo(${x}, ${y})`, true)
+    if (wait) await delay(200)
   } catch {
     /* ignore */
   }
@@ -314,6 +330,7 @@ export async function animateMouseClick(wc: WebContents, x: number, y: number): 
   try {
     await ensureCursor(wc)
     await wc.executeJavaScript(`window.__strawberryCursor?.click(${x}, ${y})`, true)
+    await delay(120)
   } catch {
     /* ignore */
   }

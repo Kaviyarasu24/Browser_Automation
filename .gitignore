@@ -1,8 +1,11 @@
-# ── Secrets ────────────────────────────────────────────────────────────
-# NEVER commit. Contains a live OpenRouter/Anthropic API key.
+# ── Secrets & Personal Data ────────────────────────────────────────────
+# NEVER commit. Contains live API keys, resume/profile info.
 .env
 .env.*
 !.env.example
+profile.json
+answers-cache.json
+applications.csv
 
 # ── Python (legacy main.py experiment) ─────────────────────────────────
 .venv/

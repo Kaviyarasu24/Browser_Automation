@@ -5,7 +5,9 @@ import type {
   DownloadRecord,
   PublicConfig,
   TabState,
-  TaskHistoryItem
+  TaskHistoryItem,
+  JobQueueItem,
+  FormFieldReviewItem
 } from '../../shared/types.js'
 import {
   IconBack,
@@ -89,6 +91,22 @@ export function App(): React.JSX.Element {
     prompt: number
     completion: number
     total: number
+  } | null>(null)
+  const [showQueueDrawer, setShowQueueDrawer] = useState(false)
+  const [queueUrlsText, setQueueUrlsText] = useState('')
+  const [queueDryRun, setQueueDryRun] = useState(false)
+  const [queueItems, setQueueItems] = useState<JobQueueItem[]>([])
+  const [isQueueRunning, setIsQueueRunning] = useState(false)
+  const [activeReview, setActiveReview] = useState<{
+    id: string
+    fields: FormFieldReviewItem[]
+    editedFields: Record<string, string | boolean>
+  } | null>(null)
+  const [activeIntervention, setActiveIntervention] = useState<{
+    id: string
+    reason: string
+    title: string
+    message: string
   } | null>(null)
 
   const contentRef = useRef<HTMLDivElement>(null)
@@ -191,19 +209,46 @@ export function App(): React.JSX.Element {
           action: event.action,
           target: event.target
         })
+      } else if (event.type === 'form_review_required') {
+        setActiveReview({
+          id: event.id,
+          fields: event.fields,
+          editedFields: {}
+        })
+      } else if (event.type === 'user_intervention_required') {
+        setActiveIntervention({
+          id: event.id,
+          reason: event.reason,
+          title: event.title,
+          message: event.message
+        })
       } else if (event.type === 'done') {
         setAgentStatus('done')
         setActiveConfirmation(null)
+        setActiveReview(null)
+        setActiveIntervention(null)
         loadHistory()
       } else if (event.type === 'error') {
         setAgentStatus('error')
         setActiveConfirmation(null)
+        setActiveReview(null)
+        setActiveIntervention(null)
         loadHistory()
       } else if (event.type === 'cancelled') {
         setAgentStatus('idle')
         setActiveConfirmation(null)
+        setActiveReview(null)
+        setActiveIntervention(null)
         loadHistory()
       }
+    })
+
+    // Listen for queue updates
+    const unbindQueue = window.api?.queue.onUpdated((items) => {
+      setQueueItems(items)
+      setIsQueueRunning(
+        items.some((i) => i.status === 'queued' || i.status === 'filling' || i.status === 'navigating')
+      )
     })
 
     // Listen for downloads
@@ -215,6 +260,7 @@ export function App(): React.JSX.Element {
     return () => {
       unbindTabs()
       unbindAgent()
+      unbindQueue?.()
       unbindDownloads?.()
     }
   }, [loadHistory])
@@ -315,6 +361,44 @@ export function App(): React.JSX.Element {
     const id = activeConfirmation.id
     setActiveConfirmation(null)
     await window.api?.agent.confirm(id, false)
+  }
+
+  const handleApproveReview = async () => {
+    if (!activeReview) return
+    const id = activeReview.id
+    const edited = activeReview.editedFields
+    setActiveReview(null)
+    await window.api?.agent.reviewResponse(id, { approved: true, editedFields: edited })
+  }
+
+  const handleRejectReview = async () => {
+    if (!activeReview) return
+    const id = activeReview.id
+    setActiveReview(null)
+    await window.api?.agent.reviewResponse(id, { approved: false })
+  }
+
+  const handleResolveIntervention = async () => {
+    if (!activeIntervention) return
+    const id = activeIntervention.id
+    setActiveIntervention(null)
+    await window.api?.agent.interventionResolved(id)
+  }
+
+  const handleStartQueue = async () => {
+    const urls = queueUrlsText
+      .split('\n')
+      .map((u) => u.trim())
+      .filter((u) => u.length > 0 && /^https?:/i.test(u))
+    if (urls.length === 0) return
+    setIsQueueRunning(true)
+    setSidebarOpen(true)
+    await window.api?.queue.run({ urls, dryRun: queueDryRun })
+  }
+
+  const handleCancelQueue = async () => {
+    await window.api?.queue.cancel()
+    setIsQueueRunning(false)
   }
 
   const handleCancelAgent = async () => {
@@ -659,6 +743,7 @@ export function App(): React.JSX.Element {
                         setShowDownloadsDrawer(true)
                         setShowHistoryDrawer(false)
                         setShowSettingsDrawer(false)
+                        setShowQueueDrawer(false)
                         setShowMoreMenu(false)
                       }}
                     >
@@ -668,6 +753,34 @@ export function App(): React.JSX.Element {
                       {downloads.length > 0 && (
                         <span style={{ fontSize: 10, color: '#888' }}>{downloads.length}</span>
                       )}
+                    </button>
+                    <button
+                      className="copilot-menu-item"
+                      onClick={() => {
+                        setShowQueueDrawer(true)
+                        setShowDownloadsDrawer(false)
+                        setShowHistoryDrawer(false)
+                        setShowSettingsDrawer(false)
+                        setShowMoreMenu(false)
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <IconFile size={13} /> Job Queue & Auto-Apply
+                      </span>
+                      {queueItems.length > 0 && (
+                        <span style={{ fontSize: 10, color: '#888' }}>{queueItems.length}</span>
+                      )}
+                    </button>
+                    <button
+                      className="copilot-menu-item"
+                      onClick={() => {
+                        window.api?.tracker.open()
+                        setShowMoreMenu(false)
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <IconFolder size={13} /> Tracker (applications.csv)
+                      </span>
                     </button>
                     <button
                       className="copilot-menu-item"
@@ -1039,6 +1152,177 @@ export function App(): React.JSX.Element {
               </div>
             )}
 
+            {/* Job Queue & Auto-Apply Drawer */}
+            {showQueueDrawer && (
+              <div className="copilot-history-drawer">
+                <div className="history-drawer-header">
+                  <div className="history-drawer-title-group">
+                    <IconFile size={16} />
+                    <span>Job Applications Queue</span>
+                  </div>
+                  <button
+                    className="copilot-header-btn"
+                    title="Close queue"
+                    onClick={() => setShowQueueDrawer(false)}
+                  >
+                    <IconClose size={16} />
+                  </button>
+                </div>
+
+                <div
+                  style={{
+                    padding: '12px 16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                    flex: 1,
+                    overflowY: 'auto'
+                  }}
+                >
+                  <label style={{ fontSize: 12, fontWeight: 600, color: '#e5e5e5' }}>
+                    Paste Job Links (One per line):
+                  </label>
+                  <textarea
+                    rows={4}
+                    style={{
+                      background: 'rgba(0,0,0,0.3)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 6,
+                      color: '#fff',
+                      padding: 8,
+                      fontSize: 11,
+                      fontFamily: 'var(--font-mono)',
+                      resize: 'vertical'
+                    }}
+                    placeholder="https://boards.greenhouse.io/company/jobs/12345&#10;https://jobs.lever.co/company/67890"
+                    value={queueUrlsText}
+                    onChange={(e) => setQueueUrlsText(e.target.value)}
+                  />
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      id="dry-run-checkbox"
+                      checked={queueDryRun}
+                      onChange={(e) => setQueueDryRun(e.target.checked)}
+                    />
+                    <label
+                      htmlFor="dry-run-checkbox"
+                      style={{ fontSize: 12, color: '#e5e5e5', cursor: 'pointer' }}
+                    >
+                      Dry-Run Mode (Fill form, verify answers, but do not submit)
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                    {isQueueRunning ? (
+                      <button
+                        className="btn-settings-ping"
+                        style={{ background: 'var(--error)', flex: 1 }}
+                        onClick={handleCancelQueue}
+                      >
+                        ⏹ Stop Queue
+                      </button>
+                    ) : (
+                      <button
+                        className="btn-settings-save"
+                        style={{ flex: 1 }}
+                        disabled={!queueUrlsText.trim()}
+                        onClick={handleStartQueue}
+                      >
+                        ▶ Start Auto-Applying
+                      </button>
+                    )}
+                    <button
+                      className="btn-settings-ping"
+                      title="Open applications.csv tracker"
+                      onClick={() => window.api?.tracker.open()}
+                    >
+                      <IconFolder size={13} /> Tracker CSV
+                    </button>
+                  </div>
+
+                  <div style={{ marginTop: 10 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: 'var(--text-muted)',
+                        marginBottom: 6
+                      }}
+                    >
+                      Queue Progress ({queueItems.length})
+                    </div>
+                    {queueItems.length === 0 ? (
+                      <div
+                        style={{ textAlign: 'center', fontSize: 11, color: '#777', padding: '24px 0' }}
+                      >
+                        No active queue. Paste links above and click Start.
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {queueItems.map((item) => (
+                          <div
+                            key={item.id}
+                            className="history-item-card"
+                            style={{ padding: '8px 10px' }}
+                          >
+                            <div
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  color: '#fff',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  maxWidth: 190
+                                }}
+                                title={item.url}
+                              >
+                                {item.url}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: 9.5,
+                                  fontWeight: 700,
+                                  textTransform: 'uppercase',
+                                  padding: '2px 6px',
+                                  borderRadius: 4,
+                                  color:
+                                    item.status === 'submitted'
+                                      ? 'var(--success)'
+                                      : item.status === 'filling'
+                                        ? 'var(--accent)'
+                                        : item.status === 'failed'
+                                          ? 'var(--error)'
+                                          : '#f59e0b',
+                                  background: 'rgba(255,255,255,0.08)'
+                                }}
+                              >
+                                {item.status}
+                              </span>
+                            </div>
+                            {item.notes && (
+                              <div style={{ fontSize: 10, color: '#aaa', marginTop: 2 }}>
+                                {item.notes}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Scrollable Conversation Content */}
             <div className="copilot-content">
               {events.length === 0 ? (
@@ -1306,6 +1590,79 @@ export function App(): React.JSX.Element {
                             Task stopped by user.
                           </div>
                         )
+                      case 'form_scan_completed':
+                        return (
+                          <div key={i} className="assistant-response-container">
+                            <div className="assistant-step-card">
+                              <div className="assistant-step-header">
+                                <span
+                                  className="assistant-step-badge"
+                                  style={{
+                                    color: 'var(--accent)',
+                                    background: 'rgba(255,51,102,0.12)'
+                                  }}
+                                >
+                                  📋 Form Scanned
+                                </span>
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                  {ev.fieldsCount} inputs detected
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 12, color: '#e5e5e5', marginTop: 4 }}>
+                                Form fields identified. Ready to map and fill application.
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      case 'form_fill_progress':
+                        return (
+                          <div key={i} className="assistant-response-container">
+                            <div className="assistant-step-card" style={{ padding: '8px 12px' }}>
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between'
+                                }}
+                              >
+                                <span style={{ fontSize: 12, color: '#fff', fontWeight: 600 }}>
+                                  ✍️ {ev.label}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: 10,
+                                    padding: '2px 8px',
+                                    borderRadius: 10,
+                                    textTransform: 'uppercase',
+                                    fontWeight: 700,
+                                    color:
+                                      ev.status === 'verified' || ev.status === 'filled'
+                                        ? 'var(--success)'
+                                        : ev.status === 'filling'
+                                          ? 'var(--accent)'
+                                          : 'var(--error)',
+                                    background:
+                                      ev.status === 'verified'
+                                        ? 'rgba(16,185,129,0.15)'
+                                        : 'rgba(255,255,255,0.06)'
+                                  }}
+                                >
+                                  {ev.status}
+                                </span>
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 11,
+                                  color: 'var(--text-muted)',
+                                  fontFamily: 'var(--font-mono)',
+                                  marginTop: 2
+                                }}
+                              >
+                                {ev.value}
+                              </div>
+                            </div>
+                          </div>
+                        )
                       default:
                         return null
                     }
@@ -1337,6 +1694,147 @@ export function App(): React.JSX.Element {
                     </button>
                     <button className="btn-deny" onClick={handleDeny}>
                       Reject
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Active Form Review Banner / Drawer */}
+            {activeReview && (
+              <div style={{ padding: '0 16px 12px 16px' }}>
+                <div className="confirmation-banner" style={{ border: '1px solid var(--accent)' }}>
+                  <div className="confirmation-header">
+                    <span className="confirmation-badge" style={{ background: 'var(--accent)', color: '#fff' }}>
+                      📋 Review Form
+                    </span>
+                    <span className="confirmation-title">
+                      Verify Form Answers ({activeReview.fields.length} fields)
+                    </span>
+                  </div>
+                  <div className="confirmation-desc">
+                    Review candidate answers mapped via rules, cache, and LLM before submitting.
+                  </div>
+                  <div
+                    style={{
+                      maxHeight: 240,
+                      overflowY: 'auto',
+                      margin: '8px 0',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: 6,
+                      padding: '4px 8px'
+                    }}
+                  >
+                    {activeReview.fields.map((f) => (
+                      <div
+                        key={f.id}
+                        style={{
+                          padding: '6px 0',
+                          borderBottom: '1px solid rgba(255,255,255,0.06)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 3
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <span style={{ fontSize: 11.5, fontWeight: 600, color: '#fff' }}>
+                            {f.label} {f.required ? '*' : ''}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 9.5,
+                              padding: '1px 6px',
+                              borderRadius: 4,
+                              background:
+                                f.source === 'rule'
+                                  ? 'rgba(16,185,129,0.2)'
+                                  : f.source === 'cache'
+                                    ? 'rgba(59,130,246,0.2)'
+                                    : 'rgba(245,158,11,0.2)',
+                              color:
+                                f.source === 'rule'
+                                  ? 'var(--success)'
+                                  : f.source === 'cache'
+                                    ? 'var(--info)'
+                                    : '#f59e0b',
+                              textTransform: 'uppercase',
+                              fontWeight: 700
+                            }}
+                          >
+                            {f.source}
+                          </span>
+                        </div>
+                        <input
+                          type="text"
+                          style={{
+                            background: 'rgba(0,0,0,0.3)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            borderRadius: 4,
+                            padding: '4px 8px',
+                            color: '#fff',
+                            fontSize: 11
+                          }}
+                          value={String(
+                            activeReview.editedFields[f.fieldId] !== undefined
+                              ? activeReview.editedFields[f.fieldId]
+                              : (f.proposedValue ?? '')
+                          )}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setActiveReview((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    editedFields: { ...prev.editedFields, [f.fieldId]: val }
+                                  }
+                                : null
+                            )
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="confirmation-actions">
+                    <button className="btn-approve" onClick={handleApproveReview}>
+                      ✓ Approve & Fill
+                    </button>
+                    <button className="btn-deny" onClick={handleRejectReview}>
+                      ✕ Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Active Human Intervention Required Banner */}
+            {activeIntervention && (
+              <div style={{ padding: '0 16px 12px 16px' }}>
+                <div
+                  className="confirmation-banner"
+                  style={{ border: '1px solid #f59e0b', background: 'rgba(245,158,11,0.1)' }}
+                >
+                  <div className="confirmation-header">
+                    <span className="confirmation-badge" style={{ background: '#f59e0b', color: '#000' }}>
+                      ⚠️ Action Required
+                    </span>
+                    <span className="confirmation-title">{activeIntervention.title}</span>
+                  </div>
+                  <div className="confirmation-desc" style={{ color: '#fef3c7' }}>
+                    {activeIntervention.message}
+                  </div>
+                  <div className="confirmation-actions" style={{ marginTop: 8 }}>
+                    <button
+                      className="btn-approve"
+                      style={{ background: '#f59e0b', color: '#000', fontWeight: 700 }}
+                      onClick={handleResolveIntervention}
+                    >
+                      ✓ I Have Completed It (Resume)
                     </button>
                   </div>
                 </div>

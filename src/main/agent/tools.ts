@@ -178,6 +178,117 @@ export const BROWSER_TOOLS: ToolDef[] = [
   {
     type: 'function',
     function: {
+      name: 'scan_form',
+      description:
+        'Scan the active page, including iframes, shadow DOM, and custom controls, for form inputs (text, email, tel, number, textarea, select, custom dropdowns, radio, checkbox, date, file). Returns the structured list of fields and validation errors.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'fill_form',
+      description:
+        'Fill detected form fields using profile data, cached answers, and intelligent mapping. Dispatches native hardware input events with 2x typing speed, animates the virtual cursor, and verifies each input acceptance.',
+      parameters: {
+        type: 'object',
+        properties: {
+          dryRun: {
+            type: 'boolean',
+            description: 'If true, maps and enters values but will never allow final form submission.'
+          },
+          reviewFirst: {
+            type: 'boolean',
+            description: 'If true, asks the user for review before filling fields with confidence < 0.7 or sensitive topics.'
+          }
+        },
+        required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'upload_file',
+      description:
+        'Attach a file (such as candidate resume or cover letter) to a form file input. Handles hidden file inputs behind styled "Upload" buttons without opening system dialogs.',
+      parameters: {
+        type: 'object',
+        properties: {
+          fileType: {
+            type: 'string',
+            enum: ['resume', 'cover_letter'],
+            description: 'Type of document to upload from user profile.'
+          },
+          fieldId: {
+            type: 'string',
+            description: 'Specific field ID of the file input (optional; defaults to first file input).'
+          },
+          customPath: {
+            type: 'string',
+            description: 'Optional explicit local file path override.'
+          }
+        },
+        required: ['fileType']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'next_step',
+      description:
+        'Click the Next / Continue / Save & Next button on a multi-step job application form, wait for the next section to load, and automatically re-scan new form fields.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'review_form',
+      description:
+        'Display a comprehensive review summary of mapped fields (showing proposed values, sources, and confidence) in the user\'s sidebar for manual inspection and approval before advancing.',
+      parameters: {
+        type: 'object',
+        properties: {
+          note: {
+            type: 'string',
+            description: 'Brief note to user explaining what requires review.'
+          }
+        },
+        required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'submit_form',
+      description:
+        'Submit the completed job application. REQUIRES EXPLICIT USER APPROVAL. Will be rejected if user has not authorized submission.',
+      parameters: {
+        type: 'object',
+        properties: {
+          confirmed: {
+            type: 'boolean',
+            description: 'Must be true to proceed with final submission.'
+          }
+        },
+        required: ['confirmed']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'done',
       description:
         'Finish the task and report the result. Call this exactly once when the goal is achieved OR when you conclude it cannot be achieved. Do not call it to report progress — only to end the run.',

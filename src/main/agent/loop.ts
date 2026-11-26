@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import type { TabManager } from '../browser/tabs.js'
 import { validateConfig, type RuntimeConfig } from '../config.js'
 import { capturePageState, formatPageState } from '../browser/page-state.js'
@@ -8,12 +9,16 @@ import {
   scrollPage,
   typeInto,
   waitFor,
+  clickCoords,
+  fillFormField,
+  uploadFileToInput,
   type ActionResult
 } from '../browser/actions.js'
 import {
   checkSensitiveClick,
   checkSensitiveType,
-  checkSensitiveNavigation
+  checkSensitiveNavigation,
+  detectUserInterventionRequired
 } from '../browser/safeguards.js'
 import {
   animateMouseMove,
@@ -24,25 +29,29 @@ import {
   stopCursorHeartbeat
 } from '../browser/cursor.js'
 import { exportDataToFile, setOnDownloadComplete } from '../browser/downloads.js'
+import { scanForm, type ScanResult } from '../browser/form-scanner.js'
+import { loadProfile } from '../profile/profile.js'
+import { mapFormFields, saveAnswerToCache, type MappedField } from './field-mapper.js'
+import { getAdapter } from '../browser/adapters/index.js'
+import { recordApplication } from '../tracker/applications.js'
 import { BROWSER_TOOLS } from './tools.js'
 import { LlmError, complete, type ChatMessage, type ToolCall } from './llm.js'
-import type { AgentEvent } from '../../shared/types.js'
+import type { AgentEvent, FormFieldReviewItem, JobStatus } from '../../shared/types.js'
 
-const MAX_STEPS = 25
+const MAX_STEPS = 60
 
-const SYSTEM_PROMPT = `You are an ultra-fast, efficient browser automation agent operating a real browser on the user's behalf. The browser has the user's own logged-in sessions. Never ask the user to log in or provide credentials.
+const SYSTEM_PROMPT = `You are an ultra-fast, intelligent browser automation and job application agent operating a real browser on the user's behalf. The browser has the user's authentic, logged-in sessions.
 
-How to work with maximum efficiency:
-1. Navigate directly to relevant domains or search URLs (e.g. https://www.google.com/search?q=... or https://cricbuzz.com) instead of searching multiple intermediate portals.
-2. Both navigate, click, and search typing automatically return the fresh page state and interactive elements. Do NOT waste a step calling read_page immediately after navigate or click.
-3. Refer to elements by the index shown in the most recent page snapshot.
-4. Only call read_page if you explicitly scrolled or need a fresh re-inspection.
-5. When the goal is met, call done immediately with the real answer and findings.
-
-Rules:
-- Aim to finish tasks in the fewest possible steps.
-- Do not repeat an action that just failed. Try an alternate path or report the blocker.
-- Keep your non-tool text brief. The action log is what the user reads.`
+Universal Form Filling & Job Application Strategy:
+1. When navigating to an application page or job link, first call scan_form to detect all form fields, input types, dropdowns, and file upload zones.
+2. Call fill_form to map and populate fields using the candidate's profile and cached answers.
+3. For file inputs (resume, CV, cover letter), use upload_file to attach candidate documents.
+4. On multi-step applications, verify the current step, then call next_step to advance to subsequent sections.
+5. If fields have low confidence or require verification, call review_form to present a structured summary to the user before proceeding.
+6. When the application is completely filled and reviewed, call submit_form to finalize. Remember: final submission requires explicit user authorization. In dry-run mode, never submit.
+7. NEVER auto-answer demographic, veteran, disability, or EEO survey questions with candidate identity — select 'Prefer not to say' / 'Decline' or flag for review.
+8. NEVER type passwords. If a sign-in wall, CAPTCHA, or verification code appears, pause and ask the user to complete it in the browser.
+9. Aim to finish forms accurately in the fewest steps. If validation errors appear, re-scan and fix the flagged fields.`
 
 export interface RunOptions {
   task: string
@@ -55,7 +64,17 @@ export interface RunOptions {
     action: string
     target?: string
   }) => Promise<boolean>
+  reviewForm?: (
+    fields: FormFieldReviewItem[]
+  ) => Promise<{ approved: boolean; editedFields?: Record<string, string | boolean> }>
+  waitForIntervention?: (info: {
+    reason: 'captcha' | 'login' | 'otp' | 'verification' | 'other'
+    title: string
+    message: string
+  }) => Promise<boolean>
+  dryRun?: boolean
   signal: AbortSignal
+  onJobStatusChange?: (status: JobStatus, notes?: string) => void
 }
 
 interface DoneResult {
@@ -128,6 +147,20 @@ export async function runAgent(opts: RunOptions): Promise<void> {
         return
       }
 
+      // Check for human intervention triggers (CAPTCHAs, OTPs, Workday login wall)
+      const intervention = await detectUserInterventionRequired(wc)
+      if (intervention && intervention.required && opts.waitForIntervention) {
+        emit({
+          type: 'user_intervention_required',
+          id: String(Date.now()),
+          reason: intervention.reason,
+          title: intervention.title,
+          message: intervention.message
+        })
+        await opts.waitForIntervention(intervention)
+        await new Promise((r) => setTimeout(r, 600))
+      }
+
       const result = await complete(cfg, messages, BROWSER_TOOLS, signal)
 
       if (result.usage) {
@@ -174,10 +207,7 @@ export async function runAgent(opts: RunOptions): Promise<void> {
         const outcome = await executeTool(
           call.function.name,
           args,
-          tabs,
-          signal,
-          emit,
-          confirm,
+          opts,
           step
         )
 
@@ -299,17 +329,10 @@ interface ToolOutcome {
 async function executeTool(
   name: string,
   args: Record<string, unknown>,
-  tabs: TabManager,
-  signal: AbortSignal,
-  emit: (e: AgentEvent) => void,
-  confirm: (info: {
-    title: string
-    description: string
-    action: string
-    target?: string
-  }) => Promise<boolean>,
+  opts: RunOptions,
   step: number
 ): Promise<ToolOutcome> {
+  const { tabs, signal, emit, confirm } = opts
   if (args.__malformed) {
     return {
       result: {
@@ -534,6 +557,421 @@ async function executeTool(
           },
           { path: res.path, filename: res.filename }
         )
+      }
+
+      case 'scan_form': {
+        const scan = await scanForm(wc)
+        emit({
+          type: 'form_scan_completed',
+          step,
+          fieldsCount: scan.fields.length,
+          fields: scan.fields.map((f) => ({
+            id: f.id,
+            label: f.label,
+            type: f.type,
+            required: f.required,
+            hasValue: Boolean(f.currentValue)
+          }))
+        })
+        const summary = `Scanned form on "${scan.title}". Found ${scan.fields.length} inputs (${scan.fields.filter((f) => f.required).length} required).`
+        return report(
+          {
+            ok: true,
+            summary:
+              summary +
+              (scan.validationErrors.length
+                ? ` Validation errors: ${scan.validationErrors.join(', ')}`
+                : '')
+          },
+          {
+            fields: scan.fields.map((f) => ({
+              id: f.id,
+              label: f.label,
+              type: f.type,
+              required: f.required,
+              currentValue: f.currentValue,
+              options: f.options?.map((o) => o.label)
+            })),
+            hasSubmitButton: scan.hasSubmitButton,
+            hasNextButton: scan.hasNextButton,
+            validationErrors: scan.validationErrors
+          }
+        )
+      }
+
+      case 'fill_form': {
+        const profile = loadProfile()
+        if (!profile) {
+          return report({
+            ok: false,
+            summary: 'No user profile found. Please create profile.json in userData or app root.'
+          })
+        }
+
+        const dryRun = args.dryRun === true || opts.dryRun === true
+        const reviewFirst = args.reviewFirst === true
+
+        opts.onJobStatusChange?.('filling', 'Mapping and filling fields')
+        await animateActionBadge(wc, '📋 Scanning & Mapping Form...', 1800)
+
+        const scan = await scanForm(wc)
+        if (scan.fields.length === 0) {
+          return report({ ok: false, summary: 'No form fields detected on active page.' })
+        }
+
+        // Check adapter hooks
+        const adapter = getAdapter(wc.getURL(), scan.title)
+        if (adapter?.quirks.beforeFill) {
+          await adapter.quirks.beforeFill(wc)
+        }
+
+        const mapped = await mapFormFields(scan.fields, profile, opts.cfg, {
+          title: scan.title,
+          company: scan.title.split('-')[0]?.trim()
+        })
+
+        // Review step if requested or if low confidence/EEO fields exist
+        const fieldsNeedingReview = mapped.filter((m) => m.needsReview || m.confidence < 0.7)
+        if ((reviewFirst || fieldsNeedingReview.length > 0) && opts.reviewForm) {
+          opts.onJobStatusChange?.('needs_review', 'Waiting for user review')
+          const reviewItems: FormFieldReviewItem[] = mapped.map((m) => ({
+            id: m.fieldId,
+            fieldId: m.fieldId,
+            label: m.label,
+            type: m.type as any,
+            currentValue: scan.fields.find((f) => f.id === m.fieldId)?.currentValue || null,
+            proposedValue: m.value,
+            source: m.source,
+            confidence: m.confidence,
+            required: scan.fields.find((f) => f.id === m.fieldId)?.required || false,
+            approved: !m.needsReview,
+            options: m.options
+          }))
+
+          const reviewRes = await opts.reviewForm(reviewItems)
+          if (!reviewRes.approved) {
+            opts.onJobStatusChange?.('needs_manual', 'Review rejected by user')
+            return report({ ok: false, summary: 'Form filling cancelled by user during review.' })
+          }
+
+          // Apply any edited field values from user
+          if (reviewRes.editedFields) {
+            for (const [fId, val] of Object.entries(reviewRes.editedFields)) {
+              const item = mapped.find((m) => m.fieldId === fId)
+              if (item) {
+                item.value = val
+                item.source = 'manual'
+                item.confidence = 1.0
+                saveAnswerToCache(item.label, String(val))
+              }
+            }
+          }
+        }
+
+        // Fill fields sequentially
+        let filledCount = 0
+        let retryCount = 0
+        for (const m of mapped) {
+          if (signal.aborted) throw new Error('Aborted')
+          if (m.value === null || m.value === undefined || m.value === '') continue
+
+          const field = scan.fields.find((f) => f.id === m.fieldId)
+          if (!field) continue
+
+          emit({
+            type: 'form_fill_progress',
+            step,
+            fieldId: field.id,
+            label: field.label,
+            value: String(m.value),
+            status: 'filling'
+          })
+
+          const fillRes = await fillFormField(wc, field, m.value)
+          if (fillRes.ok) {
+            filledCount++
+            if (typeof m.value === 'string' && m.source !== 'rule') {
+              saveAnswerToCache(field.label, m.value)
+            }
+            emit({
+              type: 'form_fill_progress',
+              step,
+              fieldId: field.id,
+              label: field.label,
+              value: String(m.value),
+              status: fillRes.verified ? 'verified' : 'filled'
+            })
+          } else {
+            emit({
+              type: 'form_fill_progress',
+              step,
+              fieldId: field.id,
+              label: field.label,
+              value: String(m.value),
+              status: 'failed'
+            })
+          }
+        }
+
+        // Re-scan to check for validation errors
+        await new Promise((r) => setTimeout(r, 350))
+        let postScan = await scanForm(wc)
+
+        // Validation error recovery (up to 2 retries)
+        while (postScan.validationErrors.length > 0 && retryCount < 2) {
+          retryCount++
+          console.log(
+            `[loop] Validation errors detected (attempt ${retryCount}/2):`,
+            postScan.validationErrors
+          )
+          await animateActionBadge(wc, `Fixing validation errors (${retryCount}/2)...`, 1500)
+
+          for (const err of postScan.validationErrors) {
+            const fieldNameOrLabel = err.split(':')[0]?.trim().toLowerCase()
+            const fieldToFix = postScan.fields.find(
+              (f) =>
+                f.label.toLowerCase().includes(fieldNameOrLabel || '') ||
+                f.id.toLowerCase().includes(fieldNameOrLabel || '')
+            )
+            if (fieldToFix) {
+              const remapped = await mapFormFields([fieldToFix], profile, opts.cfg)
+              const reVal = remapped[0]?.value
+              if (reVal) {
+                await fillFormField(wc, fieldToFix, reVal)
+              }
+            }
+          }
+          await new Promise((r) => setTimeout(r, 400))
+          postScan = await scanForm(wc)
+        }
+
+        if (adapter?.quirks.afterFill) {
+          await adapter.quirks.afterFill(wc)
+        }
+
+        const dryRunMsg = dryRun ? ' (Dry-run mode: submission disabled)' : ''
+        const errorMsg =
+          postScan.validationErrors.length > 0
+            ? ` Warnings/Errors: ${postScan.validationErrors.join('; ')}`
+            : ''
+
+        return report(
+          {
+            ok: true,
+            summary: `Successfully filled ${filledCount} fields.${dryRunMsg}${errorMsg}`
+          },
+          {
+            filledCount,
+            validationErrors: postScan.validationErrors,
+            hasNextButton: postScan.hasNextButton,
+            hasSubmitButton: postScan.hasSubmitButton
+          }
+        )
+      }
+
+      case 'upload_file': {
+        const profile = loadProfile()
+        const fileType = requireString(args, 'fileType') || 'resume'
+        const customPath = requireString(args, 'customPath')
+        const fieldId = requireString(args, 'fieldId') || 'resume'
+
+        let filePath: string | null = customPath
+        if (!filePath) {
+          if (fileType === 'cover_letter') {
+            if (profile?.coverLetterTemplate && !existsSync(profile.coverLetterTemplate)) {
+              const exp = exportDataToFile(profile.coverLetterTemplate, 'cover_letter.txt', 'txt')
+              filePath = exp.path || null
+            } else {
+              filePath = profile?.coverLetterTemplate || null
+            }
+          } else {
+            filePath = profile?.resumePath || null
+          }
+        }
+
+        if (!filePath || !existsSync(filePath)) {
+          return report({
+            ok: false,
+            summary: `File upload failed: No valid ${fileType} file found at "${filePath || '(empty)'}". Check resumePath in profile.json.`
+          })
+        }
+
+        const uploadRes = await uploadFileToInput(wc, fieldId, filePath)
+        return report(uploadRes)
+      }
+
+      case 'next_step': {
+        const scan = await scanForm(wc)
+        if (scan.validationErrors.length > 0) {
+          return report({
+            ok: false,
+            summary: `Cannot advance: form has validation errors: ${scan.validationErrors.join('; ')}. Fix them first.`
+          })
+        }
+
+        let nextCoords = scan.nextButtonCoordinates
+        const adapter = getAdapter(wc.getURL())
+        if (!nextCoords && adapter?.quirks.nextSelector) {
+          const sel = adapter.quirks.nextSelector
+          const coords = (await wc
+            .executeJavaScript(
+              `(() => {
+                const btn = document.querySelector(${JSON.stringify(sel)});
+                if (btn) {
+                  btn.scrollIntoView({ block: 'center' });
+                  const r = btn.getBoundingClientRect();
+                  return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+                }
+                return null;
+              })()`,
+              true
+            )
+            .catch(() => null)) as { x: number; y: number } | null
+          if (coords) nextCoords = { x: coords.x, y: coords.y, width: 80, height: 35 }
+        }
+
+        if (!nextCoords) {
+          return report({
+            ok: false,
+            summary:
+              'Next / Continue button not found. You may be on the final page or need to click an element manually.'
+          })
+        }
+
+        await clickCoords(wc, nextCoords.x, nextCoords.y, 'Next Step')
+        await new Promise((r) => setTimeout(r, 650))
+        const newScan = await scanForm(wc)
+        return report(
+          {
+            ok: true,
+            summary: `Advanced to next step. Found ${newScan.fields.length} fields on new page (${newScan.hasSubmitButton ? 'Submit button visible' : 'Multi-step in progress'}).`
+          },
+          {
+            fieldsCount: newScan.fields.length,
+            hasSubmitButton: newScan.hasSubmitButton,
+            hasNextButton: newScan.hasNextButton
+          }
+        )
+      }
+
+      case 'review_form': {
+        const profile = loadProfile()
+        if (!profile) return report({ ok: false, summary: 'No profile found' })
+        const scan = await scanForm(wc)
+        const mapped = await mapFormFields(scan.fields, profile, opts.cfg)
+
+        if (opts.reviewForm) {
+          const reviewItems: FormFieldReviewItem[] = mapped.map((m) => ({
+            id: m.fieldId,
+            fieldId: m.fieldId,
+            label: m.label,
+            type: m.type as any,
+            currentValue: scan.fields.find((f) => f.id === m.fieldId)?.currentValue || null,
+            proposedValue: m.value,
+            source: m.source,
+            confidence: m.confidence,
+            required: scan.fields.find((f) => f.id === m.fieldId)?.required || false,
+            approved: !m.needsReview,
+            options: m.options
+          }))
+
+          const res = await opts.reviewForm(reviewItems)
+          return report({
+            ok: res.approved,
+            summary: res.approved ? 'Form review approved by user.' : 'Form review rejected by user.'
+          })
+        }
+
+        return report({ ok: true, summary: `Form has ${mapped.length} fields mapped.` })
+      }
+
+      case 'submit_form': {
+        const dryRun = args.dryRun === true || opts.dryRun === true
+        if (dryRun) {
+          opts.onJobStatusChange?.('submitted', 'Dry-run completed (submission skipped)')
+          return report({
+            ok: true,
+            summary: 'Dry-run mode is ACTIVE: All form fields verified. Final submission was skipped.'
+          })
+        }
+
+        const confirmed = args.confirmed === true
+        if (!confirmed) {
+          return report({
+            ok: false,
+            summary: 'submit_form requires confirmed=true.'
+          })
+        }
+
+        // Always require user confirmation safeguard for final submit
+        const approved = await opts.confirm({
+          title: 'Confirm Final Application Submission',
+          description: `The agent is ready to submit your job application on ${wc.getTitle() || wc.getURL()}. Do you want to submit now?`,
+          action: 'submit_form',
+          target: wc.getURL()
+        })
+
+        if (!approved) {
+          opts.onJobStatusChange?.('needs_manual', 'Submission cancelled by user')
+          return report({
+            ok: false,
+            summary: 'Submission blocked: User declined confirmation to submit application.'
+          })
+        }
+
+        const scan = await scanForm(wc)
+        let submitCoords = scan.submitButtonCoordinates
+        const adapter = getAdapter(wc.getURL())
+        if (!submitCoords && adapter?.quirks.submitSelector) {
+          const coords = (await wc
+            .executeJavaScript(
+              `(() => {
+                const btn = document.querySelector(${JSON.stringify(adapter.quirks.submitSelector)});
+                if (btn) {
+                  btn.scrollIntoView({ block: 'center' });
+                  const r = btn.getBoundingClientRect();
+                  return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+                }
+                return null;
+              })()`,
+              true
+            )
+            .catch(() => null)) as { x: number; y: number } | null
+          if (coords) submitCoords = { x: coords.x, y: coords.y, width: 80, height: 35 }
+        }
+
+        if (!submitCoords) {
+          return report({
+            ok: false,
+            summary: 'Submit button not located on the page.'
+          })
+        }
+
+        await clickCoords(wc, submitCoords.x, submitCoords.y, 'Submit Application')
+        await new Promise((r) => setTimeout(r, 1200))
+
+        // Record application in CSV
+        const dateStr = new Date().toISOString().split('T')[0] || ''
+        const pageTitle = wc.getTitle() || ''
+        const roleName = pageTitle.split('-')[0]?.trim() || 'Software Engineer'
+        const companyName = pageTitle.split('-')[1]?.trim() || new URL(wc.getURL()).hostname
+
+        const trackRes = recordApplication({
+          date: dateStr,
+          company: companyName,
+          role: roleName,
+          url: wc.getURL(),
+          status: 'submitted',
+          notes: 'Submitted via Strawberry universal form automation'
+        })
+
+        opts.onJobStatusChange?.('submitted', 'Application submitted')
+        await animateActionBadge(wc, '🎉 Application Submitted!', 3500)
+
+        return report({
+          ok: true,
+          summary: `Application submitted successfully! Recorded to ${trackRes.path}.`
+        })
       }
 
       case 'done': {

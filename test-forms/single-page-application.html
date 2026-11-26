@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Acme Corp - Senior Software Engineer Application</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 40px; margin: 0; }
+    .container { max-width: 680px; margin: 0 auto; background: #1e293b; padding: 32px; border-radius: 12px; border: 1px solid #334155; }
+    h1 { margin-top: 0; font-size: 24px; color: #fff; }
+    .subtitle { color: #94a3b8; margin-bottom: 24px; font-size: 14px; }
+    .form-group { margin-bottom: 18px; display: flex; flex-direction: column; gap: 6px; }
+    .form-row { display: flex; gap: 16px; margin-bottom: 18px; }
+    .form-row .form-group { flex: 1; margin-bottom: 0; }
+    label { font-size: 13px; font-weight: 600; color: #cbd5e1; }
+    input[type="text"], input[type="email"], input[type="tel"], input[type="date"], select, textarea {
+      background: #0f172a; border: 1px solid #475569; border-radius: 6px; padding: 10px 12px; color: #fff; font-size: 13px;
+    }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: #ff3366; }
+    .radio-group { display: flex; gap: 16px; align-items: center; margin-top: 4px; }
+    .radio-label { display: flex; align-items: center; gap: 6px; font-weight: normal; cursor: pointer; }
+    .checkbox-label { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+    .file-dropzone { border: 2px dashed #475569; border-radius: 8px; padding: 20px; text-align: center; cursor: pointer; background: #0f172a; }
+    .file-dropzone:hover { border-color: #ff3366; }
+    .btn-submit { background: #ff3366; color: #fff; border: none; padding: 12px 24px; font-size: 14px; font-weight: 700; border-radius: 6px; cursor: pointer; width: 100%; margin-top: 20px; }
+    .btn-submit:hover { background: #e02856; }
+    .success-card { display: none; background: #064e3b; border: 1px solid #059669; padding: 24px; border-radius: 8px; text-align: center; }
+    .error-text { color: #f43f5e; font-size: 12px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="application-form-wrapper">
+      <h1>Senior Software Engineer</h1>
+      <div class="subtitle">Acme Corp • San Francisco, CA • Full Time</div>
+
+      <form id="job-form" onsubmit="event.preventDefault(); handleSubmit();">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="firstName">First Name *</label>
+            <input type="text" id="firstName" name="firstName" required placeholder="Jane">
+          </div>
+          <div class="form-group">
+            <label for="lastName">Last Name *</label>
+            <input type="text" id="lastName" name="lastName" required placeholder="Doe">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="email">Email Address *</label>
+            <input type="email" id="email" name="email" required placeholder="jane@example.com">
+          </div>
+          <div class="form-group">
+            <label for="phone">Phone Number *</label>
+            <input type="tel" id="phone" name="phone" required placeholder="+1-555-0199">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="address">Street Address</label>
+          <input type="text" id="address" name="address" placeholder="123 Innovation Way">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="city">City</label>
+            <input type="text" id="city" name="city" placeholder="San Francisco">
+          </div>
+          <div class="form-group">
+            <label for="state">State / Province</label>
+            <input type="text" id="state" name="state" placeholder="California">
+          </div>
+          <div class="form-group">
+            <label for="zip">Zip / Postal Code</label>
+            <input type="text" id="zip" name="zip" placeholder="94105">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="linkedin">LinkedIn Profile URL *</label>
+          <input type="text" id="linkedin" name="linkedin" required placeholder="https://linkedin.com/in/username">
+        </div>
+
+        <div class="form-group">
+          <label for="github">GitHub Profile URL</label>
+          <input type="text" id="github" name="github" placeholder="https://github.com/username">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="education">Highest Education Level *</label>
+            <select id="education" name="education" required>
+              <option value="">Select an option</option>
+              <option value="High School">High School</option>
+              <option value="Associate's Degree">Associate's Degree</option>
+              <option value="Bachelor's Degree">Bachelor's Degree</option>
+              <option value="Master's Degree">Master's Degree</option>
+              <option value="PhD">Doctorate / PhD</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="noticePeriod">Notice Period / Availability *</label>
+            <select id="noticePeriod" name="noticePeriod" required>
+              <option value="">Select notice</option>
+              <option value="Immediate">Immediate</option>
+              <option value="2 weeks">2 weeks</option>
+              <option value="1 month">1 month</option>
+              <option value="2 months">2 months</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="currentCTC">Current Compensation / CTC</label>
+            <input type="text" id="currentCTC" name="currentCTC" placeholder="$140,000">
+          </div>
+          <div class="form-group">
+            <label for="expectedCTC">Expected Compensation / CTC *</label>
+            <input type="text" id="expectedCTC" name="expectedCTC" required placeholder="$160,000">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Are you legally authorized to work in the United States? *</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="work_auth" value="Yes" required> Yes
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="work_auth" value="No"> No
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Are you willing to relocate? *</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="relocation" value="Yes" required> Yes
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="relocation" value="No"> No
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="resume">Attach Resume / CV (PDF, DOCX) *</label>
+          <div class="file-dropzone" onclick="document.getElementById('resume').click()">
+            <input type="file" id="resume" name="resume" accept=".pdf,.doc,.docx" required style="display: none;" onchange="handleFileSelected(this)">
+            <span id="file-label">📄 Click to browse or drop resume here</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="whyRole">Why are you interested in this role?</label>
+          <textarea id="whyRole" name="whyRole" rows="3" placeholder="Tell us why you would be a great fit..."></textarea>
+        </div>
+
+        <!-- Demographic / EEO Section -->
+        <div style="background: #0f172a; padding: 16px; border-radius: 8px; margin: 16px 0;">
+          <h3 style="font-size: 14px; margin-top: 0; color: #94a3b8;">Voluntary Self-Identification</h3>
+          <div class="form-group">
+            <label for="gender">Gender</label>
+            <select id="gender" name="gender">
+              <option value="Decline to state">Decline to specify</option>
+              <option value="Female">Female</option>
+              <option value="Male">Male</option>
+              <option value="Non-Binary">Non-Binary</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="veteran">Veteran Status</label>
+            <select id="veteran" name="veteran">
+              <option value="I don't wish to answer">I do not wish to self-identify</option>
+              <option value="Veteran">I am a veteran</option>
+              <option value="Not Veteran">I am not a veteran</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="terms" name="terms" required>
+            <span>I certify that all information provided is accurate and agree to terms. *</span>
+          </label>
+        </div>
+
+        <button type="submit" class="btn-submit" id="btn-submit">Submit Application</button>
+      </form>
+    </div>
+
+    <div id="success-screen" class="success-card">
+      <h2>🎉 Application Submitted!</h2>
+      <p>Thank you for applying to Acme Corp. Your application has been received successfully.</p>
+    </div>
+  </div>
+
+  <script>
+    function handleFileSelected(input) {
+      if (input.files && input.files[0]) {
+        document.getElementById('file-label').textContent = '✓ ' + input.files[0].name;
+      }
+    }
+    function handleSubmit() {
+      document.getElementById('application-form-wrapper').style.display = 'none';
+      document.getElementById('success-screen').style.display = 'block';
+      document.title = 'Application Submitted - Acme Corp';
+    }
+  </script>
+</body>
+</html>
