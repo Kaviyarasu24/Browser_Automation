@@ -121,6 +121,18 @@ export function attachBrowserShortcuts(
       return
     }
 
+    // Open Downloads: Ctrl+J
+    if (ctrlOrMeta && !input.alt && !input.shift && key === 'j') {
+      event.preventDefault()
+      const existing = tabs.list().find((t) => t.url === 'edith://downloads')
+      if (existing) {
+        tabs.activate(existing.id)
+      } else {
+        tabs.create('edith://downloads', true)
+      }
+      return
+    }
+
     // Back / Forward: Alt+Left / Alt+Right
     if (input.alt && !ctrlOrMeta && input.key === 'ArrowLeft') {
       event.preventDefault()

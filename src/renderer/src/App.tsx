@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { NewTabDashboard } from './components/NewTabDashboard.js'
 import { SettingsPage } from './components/SettingsPage.js'
+import { DownloadsPage } from './components/DownloadsPage.js'
 import type {
   AgentEvent,
   BrowserSettings,
@@ -511,6 +512,17 @@ export function App(): React.JSX.Element {
     void window.api?.tabs.create('edith://settings')
   }
 
+  const handleOpenDownloads = () => {
+    setShowMoreMenu(false)
+    setShowDownloadsDrawer(false)
+    const existing = tabs.find((t) => t.url === 'edith://downloads')
+    if (existing) {
+      void window.api?.tabs.activate(existing.id)
+      return
+    }
+    void window.api?.tabs.create('edith://downloads')
+  }
+
   const handleSaveSettings = async () => {
     setSettingsSaving(true)
     try {
@@ -688,19 +700,9 @@ export function App(): React.JSX.Element {
           {/* Right Toolbar Actions */}
           <div className="nav-buttons">
             <button
-              className={`btn-icon ${showDownloadsDrawer ? 'active' : ''}`}
-              title="Downloads"
-              onClick={() => {
-                if (showDownloadsDrawer) {
-                  setShowDownloadsDrawer(false)
-                } else {
-                  setSidebarOpen(true)
-                  setShowDownloadsDrawer(true)
-                  setShowHistoryDrawer(false)
-                  setShowSettingsDrawer(false)
-                  setShowMoreMenu(false)
-                }
-              }}
+              className={`btn-icon ${activeTab?.url === 'edith://downloads' ? 'active' : ''}`}
+              title="Downloads (Ctrl+J)"
+              onClick={handleOpenDownloads}
             >
               <IconDownload size={16} />
               {isDownloading ? (
@@ -745,7 +747,9 @@ export function App(): React.JSX.Element {
       <div className="main-viewport">
         {/* Placeholder container where TabManager positions active WebContentsView */}
         <div className="web-content-placeholder" ref={contentRef}>
-          {activeTab?.url === 'edith://settings' && browserSettings ? (
+          {activeTab?.url === 'edith://downloads' ? (
+            <DownloadsPage downloads={downloads} />
+          ) : activeTab?.url === 'edith://settings' && browserSettings ? (
             <SettingsPage
               settings={browserSettings}
               onUpdateSettings={async (patch) => {
@@ -854,13 +858,7 @@ export function App(): React.JSX.Element {
                     </button>
                     <button
                       className="copilot-menu-item"
-                      onClick={() => {
-                        setShowDownloadsDrawer(true)
-                        setShowHistoryDrawer(false)
-                        setShowSettingsDrawer(false)
-                        setShowQueueDrawer(false)
-                        setShowMoreMenu(false)
-                      }}
+                      onClick={handleOpenDownloads}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <IconDownload size={13} /> Downloads

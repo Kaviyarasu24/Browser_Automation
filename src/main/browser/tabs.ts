@@ -12,7 +12,7 @@ export function isNewTabUrl(url: string): boolean {
 }
 
 export function isInternalUrl(url: string): boolean {
-  return isNewTabUrl(url) || url === 'edith://settings'
+  return isNewTabUrl(url) || url === 'edith://settings' || url === 'edith://downloads'
 }
 
 export interface Tab {
@@ -72,7 +72,15 @@ export class TabManager extends EventEmitter {
       }
     })
 
-    const tab: Tab = { id, view, title: 'New Tab', url, loading: false, favicon: null }
+    const initialUrl = url || 'about:blank'
+    const initialTitle =
+      initialUrl === 'edith://settings'
+        ? 'Settings'
+        : initialUrl === 'edith://downloads'
+          ? 'Downloads'
+          : 'New Tab'
+
+    const tab: Tab = { id, view, title: initialTitle, url: initialUrl, loading: false, favicon: null }
     this.tabs.set(id, tab)
 
     const wc = view.webContents
@@ -88,7 +96,7 @@ export class TabManager extends EventEmitter {
       return { action: 'deny' }
     })
 
-    const targetUrl = url || 'about:blank'
+    const targetUrl = isInternalUrl(initialUrl) ? 'about:blank' : initialUrl
     void wc.loadURL(targetUrl).catch((err: Error) => {
       console.warn(`[tabs] load failed for ${targetUrl}:`, err.message)
     })
@@ -220,7 +228,12 @@ export class TabManager extends EventEmitter {
     if (!tab) return
     if (isInternalUrl(url)) {
       tab.url = url || 'about:blank'
-      tab.title = url === 'edith://settings' ? 'Settings' : 'New Tab'
+      tab.title =
+        url === 'edith://settings'
+          ? 'Settings'
+          : url === 'edith://downloads'
+            ? 'Downloads'
+            : 'New Tab'
       tab.favicon = null
       if (id === this.activeId) this.syncActiveView()
       this.emitState()
@@ -259,9 +272,9 @@ export class TabManager extends EventEmitter {
     })
 
     const syncUrl = (url: string) => {
-      // Preserve virtual internal URLs like edith://settings when backing webContents sits on about:blank
-      if (url === 'about:blank' && tab.url === 'edith://settings') {
-        tab.title = 'Settings'
+      // Preserve virtual internal URLs when backing webContents sits on about:blank
+      if (url === 'about:blank' && (tab.url === 'edith://settings' || tab.url === 'edith://downloads')) {
+        tab.title = tab.url === 'edith://settings' ? 'Settings' : 'Downloads'
         if (tab.id === this.activeId) this.syncActiveView()
         this.emitState()
         return
@@ -273,7 +286,15 @@ export class TabManager extends EventEmitter {
       } else if (url === 'edith://settings') {
         tab.title = 'Settings'
         tab.favicon = null
-      } else if (tab.title === 'New Tab' || tab.title === 'Settings' || tab.title === 'Untitled') {
+      } else if (url === 'edith://downloads') {
+        tab.title = 'Downloads'
+        tab.favicon = null
+      } else if (
+        tab.title === 'New Tab' ||
+        tab.title === 'Settings' ||
+        tab.title === 'Downloads' ||
+        tab.title === 'Untitled'
+      ) {
         // A page that never fires page-title-updated still needs a label.
         try {
           tab.title = new URL(url).hostname || url
