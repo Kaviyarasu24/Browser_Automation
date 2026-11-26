@@ -1862,6 +1862,38 @@ pre {
   color: var(--text-main);
 }
 
+.newtab-action-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: pointer;
+  padding: 0;
+  margin-left: 2px;
+}
+
+.newtab-action-remove:hover {
+  background: var(--bg-primary);
+  color: var(--text-main);
+}
+
+.newtab-action-add {
+  border-style: dashed;
+}
+
+.newtab-action-img {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
 .newtab-status-grid {
   width: 100%;
   display: grid;

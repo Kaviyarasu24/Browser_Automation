@@ -13,12 +13,13 @@ interface NewTabDashboardProps {
 }
 
 const STORAGE_KEY = 'edith_newtab_shortcuts'
+const QUICK_LINKS_KEY = 'edith_newtab_quick_links'
 const BG_STORAGE_KEY = 'edith_newtab_background'
 
-const QUICK_ACTIONS = [
-  { label: 'Live cricket scores', prompt: 'Search Google for live cricket scores and summarize the latest match' },
-  { label: 'Hacker News top stories', prompt: 'Go to Hacker News and summarize the top 5 stories' },
-  { label: 'GitHub trending', prompt: 'Open github.com/trending and list the top 5 repositories today' }
+const DEFAULT_QUICK_LINKS: ShortcutItem[] = [
+  { title: 'Live cricket scores', url: 'https://www.cricbuzz.com' },
+  { title: 'Hacker News', url: 'https://news.ycombinator.com' },
+  { title: 'GitHub trending', url: 'https://github.com/trending' }
 ]
 
 const DEFAULT_SHORTCUTS: ShortcutItem[] = [
@@ -40,6 +41,19 @@ function loadShortcuts(): ShortcutItem[] {
     /* ignore */
   }
   return DEFAULT_SHORTCUTS
+}
+
+function loadQuickLinks(): ShortcutItem[] {
+  try {
+    const raw = localStorage.getItem(QUICK_LINKS_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as ShortcutItem[]
+      if (Array.isArray(parsed)) return parsed
+    }
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_QUICK_LINKS
 }
 
 function getHostname(rawUrl: string): string {
@@ -100,12 +114,13 @@ export const NewTabDashboard: React.FC<NewTabDashboardProps> = ({
   const [mode, setMode] = useState<'web' | 'agent'>('web')
   const [now, setNow] = useState(() => new Date())
   const [shortcuts, setShortcuts] = useState<ShortcutItem[]>(loadShortcuts)
+  const [quickLinks, setQuickLinks] = useState<ShortcutItem[]>(loadQuickLinks)
   const [failedIcons, setFailedIcons] = useState<Record<string, boolean>>({})
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(loadBackground)
   const bgInputRef = useRef<HTMLInputElement>(null)
 
-  // Add shortcut modal state
-  const [showAddModal, setShowAddModal] = useState(false)
+  // Add shortcut / quick-access modal state
+  const [addTarget, setAddTarget] = useState<'shortcut' | 'quick' | null>(null)
   const [newTitle, setNewTitle] = useState('')
   const [newUrl, setNewUrl] = useState('')
 
@@ -118,6 +133,15 @@ export const NewTabDashboard: React.FC<NewTabDashboardProps> = ({
     setShortcuts(next)
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const saveQuickLinks = (next: ShortcutItem[]) => {
+    setQuickLinks(next)
+    try {
+      localStorage.setItem(QUICK_LINKS_KEY, JSON.stringify(next))
     } catch {
       /* ignore */
     }
@@ -136,7 +160,7 @@ export const NewTabDashboard: React.FC<NewTabDashboardProps> = ({
     setQuery('')
   }
 
-  const handleAddShortcut = (e: React.FormEvent) => {
+  const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault()
     let rawUrl = newUrl.trim()
     if (!rawUrl) return
@@ -145,17 +169,24 @@ export const NewTabDashboard: React.FC<NewTabDashboardProps> = ({
     }
     const host = getHostname(rawUrl)
     const title = newTitle.trim() || host
-    const next = [...shortcuts, { title, url: rawUrl }]
-    saveShortcuts(next)
+    if (addTarget === 'quick') {
+      saveQuickLinks([...quickLinks, { title, url: rawUrl }])
+    } else {
+      saveShortcuts([...shortcuts, { title, url: rawUrl }])
+    }
     setNewTitle('')
     setNewUrl('')
-    setShowAddModal(false)
+    setAddTarget(null)
   }
 
   const handleRemoveShortcut = (e: React.MouseEvent, idx: number) => {
     e.stopPropagation()
-    const next = shortcuts.filter((_, i) => i !== idx)
-    saveShortcuts(next)
+    saveShortcuts(shortcuts.filter((_, i) => i !== idx))
+  }
+
+  const handleRemoveQuickLink = (e: React.MouseEvent, idx: number) => {
+    e.stopPropagation()
+    saveQuickLinks(quickLinks.filter((_, i) => i !== idx))
   }
 
   const handleBackgroundFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -322,7 +353,7 @@ export const NewTabDashboard: React.FC<NewTabDashboardProps> = ({
           <button
             type="button"
             className="newtab-shortcut-tile newtab-shortcut-add"
-            onClick={() => setShowAddModal(true)}
+            onClick={() => setAddTarget('shortcut')}
             title="Add shortcut"
           >
             <div className="newtab-shortcut-icon">
@@ -332,40 +363,82 @@ export const NewTabDashboard: React.FC<NewTabDashboardProps> = ({
           </button>
         </div>
 
-        {/* Quick Actions */}
+        {/* Quick Access Links (Direct URL navigation, 0 tokens) */}
         <div className="newtab-actions-row">
-          {QUICK_ACTIONS.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              className="newtab-action-link"
-              onClick={() => onRunAgent(item.prompt)}
-            >
-              <IconSparkles size={12} />
-              <span>{item.label}</span>
-            </button>
-          ))}
+          {quickLinks.map((item, idx) => {
+            const host = getHostname(item.url)
+            const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`
+            const showFallback = failedIcons[item.url]
+
+            return (
+              <div
+                key={`${item.url}-${idx}`}
+                role="button"
+                tabIndex={0}
+                className="newtab-action-link"
+                title={item.url}
+                onClick={() => onNavigate(item.url)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onNavigate(item.url)
+                  }
+                }}
+              >
+                {!showFallback ? (
+                  <img
+                    src={faviconUrl}
+                    alt=""
+                    className="newtab-action-img"
+                    onError={() =>
+                      setFailedIcons((prev) => ({ ...prev, [item.url]: true }))
+                    }
+                  />
+                ) : (
+                  <IconGlobe size={12} />
+                )}
+                <span>{item.title}</span>
+                <button
+                  type="button"
+                  className="newtab-action-remove"
+                  title="Remove quick link"
+                  onClick={(e) => handleRemoveQuickLink(e, idx)}
+                >
+                  <IconClose size={10} />
+                </button>
+              </div>
+            )
+          })}
           <button type="button" className="newtab-action-link" onClick={onOpenQueue}>
             <IconFile size={12} />
             <span>Job Queue</span>
           </button>
+          <button
+            type="button"
+            className="newtab-action-link newtab-action-add"
+            onClick={() => setAddTarget('quick')}
+            title="Add quick access link"
+          >
+            <IconPlus size={12} />
+            <span>Add link</span>
+          </button>
         </div>
       </div>
 
-      {/* Add Shortcut Dialog */}
-      {showAddModal && (
-        <div className="newtab-modal-backdrop" onClick={() => setShowAddModal(false)}>
+      {/* Add Shortcut / Quick Access Dialog */}
+      {addTarget && (
+        <div className="newtab-modal-backdrop" onClick={() => setAddTarget(null)}>
           <form
             className="newtab-modal"
             onClick={(e) => e.stopPropagation()}
-            onSubmit={handleAddShortcut}
+            onSubmit={handleAddItem}
           >
             <div className="newtab-modal-header">
-              <h2>Add shortcut</h2>
+              <h2>{addTarget === 'quick' ? 'Add quick access link' : 'Add shortcut'}</h2>
               <button
                 type="button"
                 className="newtab-modal-close"
-                onClick={() => setShowAddModal(false)}
+                onClick={() => setAddTarget(null)}
               >
                 <IconClose size={14} />
               </button>
@@ -375,7 +448,7 @@ export const NewTabDashboard: React.FC<NewTabDashboardProps> = ({
               <input
                 type="text"
                 className="settings-input"
-                placeholder="e.g. Gmail"
+                placeholder={addTarget === 'quick' ? 'e.g. MDN Docs' : 'e.g. Gmail'}
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 autoFocus
@@ -386,7 +459,7 @@ export const NewTabDashboard: React.FC<NewTabDashboardProps> = ({
               <input
                 type="text"
                 className="settings-input"
-                placeholder="https://mail.google.com"
+                placeholder="https://example.com"
                 value={newUrl}
                 onChange={(e) => setNewUrl(e.target.value)}
                 required
@@ -396,7 +469,7 @@ export const NewTabDashboard: React.FC<NewTabDashboardProps> = ({
               <button
                 type="button"
                 className="settings-btn-secondary"
-                onClick={() => setShowAddModal(false)}
+                onClick={() => setAddTarget(null)}
               >
                 Cancel
               </button>
