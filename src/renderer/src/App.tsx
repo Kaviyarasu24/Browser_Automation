@@ -769,13 +769,11 @@ export function App(): React.JSX.Element {
               activeTab.url === 'about:blank' ||
               activeTab.url === 'edith://newtab') && (
               <NewTabDashboard
-                bookmarks={[]}
                 onNavigate={(urlOrQuery) => navigateActiveTab(urlOrQuery)}
                 onRunAgent={(prompt) => {
                   setSidebarOpen(true)
                   void handleRunAgent(prompt)
                 }}
-                onOpenSettings={() => handleOpenSettings()}
                 onOpenQueue={() => {
                   setSidebarOpen(true)
                   setShowQueueDrawer(true)

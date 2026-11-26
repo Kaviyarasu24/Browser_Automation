@@ -1,19 +1,19 @@
-import React, { useEffect, useState } from 'react'
-import type { PublicConfig, UserProfile, ApplicationTrackerRecord } from '../../../shared/types'
-import { IconSearch, IconGlobe, IconSparkles, IconFile, IconShield } from './Icons.js'
+import React, { useEffect, useRef, useState } from 'react'
+import { IconClose, IconGlobe, IconPlus, IconSearch, IconSparkles, IconFile } from './Icons.js'
 
-interface BookmarkItem {
+export interface ShortcutItem {
   title: string
   url: string
 }
 
 interface NewTabDashboardProps {
-  bookmarks: BookmarkItem[]
   onNavigate: (urlOrQuery: string) => void
   onRunAgent: (prompt: string) => void
-  onOpenSettings: () => void
   onOpenQueue: () => void
 }
+
+const STORAGE_KEY = 'edith_newtab_shortcuts'
+const BG_STORAGE_KEY = 'edith_newtab_background'
 
 const QUICK_ACTIONS = [
   { label: 'Live cricket scores', prompt: 'Search Google for live cricket scores and summarize the latest match' },
@@ -21,7 +21,7 @@ const QUICK_ACTIONS = [
   { label: 'GitHub trending', prompt: 'Open github.com/trending and list the top 5 repositories today' }
 ]
 
-const DEFAULT_SHORTCUTS: BookmarkItem[] = [
+const DEFAULT_SHORTCUTS: ShortcutItem[] = [
   { title: 'Google', url: 'https://www.google.com' },
   { title: 'GitHub', url: 'https://github.com' },
   { title: 'LinkedIn', url: 'https://www.linkedin.com/jobs' },
@@ -29,38 +29,99 @@ const DEFAULT_SHORTCUTS: BookmarkItem[] = [
   { title: 'YouTube', url: 'https://www.youtube.com' }
 ]
 
+function loadShortcuts(): ShortcutItem[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as ShortcutItem[]
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    }
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_SHORTCUTS
+}
+
+function getHostname(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).hostname.replace(/^www\./, '')
+  } catch {
+    return rawUrl
+  }
+}
+
+function loadBackground(): string | null {
+  try {
+    return localStorage.getItem(BG_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function compressImageToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Failed to read image'))
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '')
+      // Keep small images / GIFs untouched
+      if (file.size <= 1.5 * 1024 * 1024 || file.type === 'image/gif') {
+        resolve(dataUrl)
+        return
+      }
+      const img = new Image()
+      img.onerror = () => resolve(dataUrl)
+      img.onload = () => {
+        const maxW = 1920
+        const scale = img.width > maxW ? maxW / img.width : 1
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(dataUrl)
+          return
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', 0.88))
+      }
+      img.src = dataUrl
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
 export const NewTabDashboard: React.FC<NewTabDashboardProps> = ({
-  bookmarks,
   onNavigate,
   onRunAgent,
-  onOpenSettings,
   onOpenQueue
 }) => {
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState<'web' | 'agent'>('web')
   const [now, setNow] = useState(() => new Date())
-  const [config, setConfig] = useState<PublicConfig | null>(null)
-  const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [appsCount, setAppsCount] = useState<number>(0)
-  const [pingState, setPingState] = useState<{
-    status: 'idle' | 'testing' | 'ok' | 'error'
-    latencyMs?: number
-    detail?: string
-  }>({ status: 'idle' })
+  const [shortcuts, setShortcuts] = useState<ShortcutItem[]>(loadShortcuts)
+  const [failedIcons, setFailedIcons] = useState<Record<string, boolean>>({})
+  const [backgroundUrl, setBackgroundUrl] = useState<string | null>(loadBackground)
+  const bgInputRef = useRef<HTMLInputElement>(null)
+
+  // Add shortcut modal state
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [newTitle, setNewTitle] = useState('')
+  const [newUrl, setNewUrl] = useState('')
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000)
     return () => clearInterval(timer)
   }, [])
 
-  useEffect(() => {
-    window.api?.config.get().then(setConfig).catch(() => {})
-    window.api?.profile.get().then(setProfile).catch(() => {})
-    window.api?.tracker
-      .list()
-      .then((list: ApplicationTrackerRecord[]) => setAppsCount(list.length))
-      .catch(() => {})
-  }, [])
+  const saveShortcuts = (next: ShortcutItem[]) => {
+    setShortcuts(next)
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+    } catch {
+      /* ignore */
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -75,40 +136,93 @@ export const NewTabDashboard: React.FC<NewTabDashboardProps> = ({
     setQuery('')
   }
 
-  const handlePing = async () => {
-    if (!window.api?.config?.ping) return
-    setPingState({ status: 'testing' })
-    const started = performance.now()
+  const handleAddShortcut = (e: React.FormEvent) => {
+    e.preventDefault()
+    let rawUrl = newUrl.trim()
+    if (!rawUrl) return
+    if (!/^https?:\/\//i.test(rawUrl)) {
+      rawUrl = `https://${rawUrl}`
+    }
+    const host = getHostname(rawUrl)
+    const title = newTitle.trim() || host
+    const next = [...shortcuts, { title, url: rawUrl }]
+    saveShortcuts(next)
+    setNewTitle('')
+    setNewUrl('')
+    setShowAddModal(false)
+  }
+
+  const handleRemoveShortcut = (e: React.MouseEvent, idx: number) => {
+    e.stopPropagation()
+    const next = shortcuts.filter((_, i) => i !== idx)
+    saveShortcuts(next)
+  }
+
+  const handleBackgroundFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
     try {
-      const res = await window.api.config.ping()
-      const elapsed = Math.round(performance.now() - started)
-      if (res.ok) {
-        setPingState({ status: 'ok', latencyMs: elapsed, detail: res.detail })
-      } else {
-        setPingState({ status: 'error', detail: res.detail || 'Connection failed' })
-      }
-    } catch (err) {
-      setPingState({ status: 'error', detail: String(err) })
+      const dataUrl = await compressImageToDataUrl(file)
+      localStorage.setItem(BG_STORAGE_KEY, dataUrl)
+      setBackgroundUrl(dataUrl)
+    } catch {
+      /* ignore */
     }
   }
 
-  const shortcuts = bookmarks.length > 0 ? bookmarks.slice(0, 8) : DEFAULT_SHORTCUTS
-
-  const providerHost = (() => {
-    if (!config?.baseUrl) return 'Not configured'
+  const handleResetBackground = () => {
     try {
-      return new URL(config.baseUrl).hostname
+      localStorage.removeItem(BG_STORAGE_KEY)
     } catch {
-      return config.baseUrl
+      /* ignore */
     }
-  })()
+    setBackgroundUrl(null)
+  }
 
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const dateStr = now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
 
   return (
-    <div className="newtab-dashboard">
+    <div
+      className={`newtab-dashboard ${backgroundUrl ? 'has-bg' : ''}`}
+      style={
+        backgroundUrl
+          ? {
+              backgroundImage: `linear-gradient(rgba(16, 17, 20, 0.56), rgba(16, 17, 20, 0.68)), url(${backgroundUrl})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center'
+            }
+          : undefined
+      }
+    >
+      <input
+        ref={bgInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={(e) => void handleBackgroundFileChange(e)}
+      />
+
       <div className="newtab-topbar">
+        <div className="newtab-bg-controls">
+          <button
+            type="button"
+            className="newtab-bg-btn"
+            onClick={() => bgInputRef.current?.click()}
+          >
+            {backgroundUrl ? 'Change background' : 'Set background'}
+          </button>
+          {backgroundUrl && (
+            <button
+              type="button"
+              className="newtab-bg-btn"
+              onClick={handleResetBackground}
+            >
+              Reset
+            </button>
+          )}
+        </div>
         <span className="newtab-time">
           {dateStr} · {timeStr}
         </span>
@@ -156,30 +270,66 @@ export const NewTabDashboard: React.FC<NewTabDashboardProps> = ({
           </div>
         </form>
 
-        {/* Shortcuts */}
+        {/* Shortcuts with Favicons + Add Button */}
         <div className="newtab-shortcuts">
-          {shortcuts.map((site) => {
-            let host = site.url
-            try {
-              host = new URL(site.url).hostname.replace(/^www\./, '')
-            } catch {
-              /* keep raw */
-            }
+          {shortcuts.map((site, idx) => {
+            const host = getHostname(site.url)
+            const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`
+            const showFallback = failedIcons[site.url]
+
             return (
-              <button
-                key={site.url}
-                type="button"
+              <div
+                key={`${site.url}-${idx}`}
+                role="button"
+                tabIndex={0}
                 className="newtab-shortcut-tile"
                 onClick={() => onNavigate(site.url)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onNavigate(site.url)
+                  }
+                }}
                 title={site.url}
               >
+                <button
+                  type="button"
+                  className="newtab-shortcut-remove"
+                  title="Remove shortcut"
+                  onClick={(e) => handleRemoveShortcut(e, idx)}
+                >
+                  <IconClose size={11} />
+                </button>
                 <div className="newtab-shortcut-icon">
-                  {(site.title || host).charAt(0).toUpperCase()}
+                  {!showFallback ? (
+                    <img
+                      src={faviconUrl}
+                      alt=""
+                      className="newtab-shortcut-img"
+                      onError={() =>
+                        setFailedIcons((prev) => ({ ...prev, [site.url]: true }))
+                      }
+                    />
+                  ) : (
+                    <span>{(site.title || host).charAt(0).toUpperCase()}</span>
+                  )}
                 </div>
                 <span className="newtab-shortcut-title">{site.title || host}</span>
-              </button>
+              </div>
             )
           })}
+
+          <button
+            type="button"
+            className="newtab-shortcut-tile newtab-shortcut-add"
+            onClick={() => setShowAddModal(true)}
+            title="Add shortcut"
+          >
+            <div className="newtab-shortcut-icon">
+              <IconPlus size={18} />
+            </div>
+            <span className="newtab-shortcut-title">Add shortcut</span>
+          </button>
         </div>
 
         {/* Quick Actions */}
@@ -200,98 +350,63 @@ export const NewTabDashboard: React.FC<NewTabDashboardProps> = ({
             <span>Job Queue</span>
           </button>
         </div>
-
-        {/* System Status */}
-        <div className="newtab-status-grid">
-          <div className="newtab-status-card">
-            <div className="newtab-status-head">
-              <span className="newtab-status-label">Model &amp; Provider</span>
-              <span className={`newtab-dot ${config?.hasApiKey ? 'ok' : 'warn'}`}>
-                {config?.hasApiKey ? 'Ready' : 'No API key'}
-              </span>
-            </div>
-            <div className="newtab-status-rows">
-              <div className="newtab-status-row">
-                <span>Model</span>
-                <code>{config?.model || 'Unset'}</code>
-              </div>
-              <div className="newtab-status-row">
-                <span>Host</span>
-                <code>{providerHost}</code>
-              </div>
-              {pingState.status !== 'idle' && (
-                <div className="newtab-status-row">
-                  <span>Ping</span>
-                  <span
-                    className={
-                      pingState.status === 'ok'
-                        ? 'text-success'
-                        : pingState.status === 'error'
-                        ? 'text-error'
-                        : ''
-                    }
-                  >
-                    {pingState.status === 'testing'
-                      ? 'Checking...'
-                      : pingState.status === 'ok'
-                      ? `${pingState.latencyMs ?? 0} ms`
-                      : pingState.detail}
-                  </span>
-                </div>
-              )}
-            </div>
-            <div className="newtab-status-foot">
-              <button
-                type="button"
-                className="newtab-text-btn"
-                onClick={() => void handlePing()}
-                disabled={pingState.status === 'testing'}
-              >
-                {pingState.status === 'testing' ? 'Testing...' : 'Test connection'}
-              </button>
-              <button type="button" className="newtab-text-btn" onClick={onOpenSettings}>
-                Settings
-              </button>
-            </div>
-          </div>
-
-          <div className="newtab-status-card">
-            <div className="newtab-status-head">
-              <span className="newtab-status-label">Profile &amp; Session</span>
-              <span className="newtab-dot ok">
-                <IconShield size={11} />
-                <span>Persistent</span>
-              </span>
-            </div>
-            <div className="newtab-status-rows">
-              <div className="newtab-status-row">
-                <span>Profile</span>
-                <span>{profile?.fullName || 'Not configured'}</span>
-              </div>
-              <div className="newtab-status-row">
-                <span>Resume</span>
-                <span>{profile?.resumePath ? 'Ready' : 'Not set'}</span>
-              </div>
-              <div className="newtab-status-row">
-                <span>Applications</span>
-                <span>{appsCount} logged</span>
-              </div>
-            </div>
-            <div className="newtab-status-foot">
-              <button
-                type="button"
-                className="newtab-text-btn"
-                onClick={() => void window.api?.tracker.open()}
-              >
-                Open applications.csv
-              </button>
-              <button type="button" className="newtab-text-btn" onClick={onOpenQueue}>
-                Open queue
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
+
+      {/* Add Shortcut Dialog */}
+      {showAddModal && (
+        <div className="newtab-modal-backdrop" onClick={() => setShowAddModal(false)}>
+          <form
+            className="newtab-modal"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={handleAddShortcut}
+          >
+            <div className="newtab-modal-header">
+              <h2>Add shortcut</h2>
+              <button
+                type="button"
+                className="newtab-modal-close"
+                onClick={() => setShowAddModal(false)}
+              >
+                <IconClose size={14} />
+              </button>
+            </div>
+            <div className="settings-field">
+              <label>Name</label>
+              <input
+                type="text"
+                className="settings-input"
+                placeholder="e.g. Gmail"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="settings-field">
+              <label>URL</label>
+              <input
+                type="text"
+                className="settings-input"
+                placeholder="https://mail.google.com"
+                value={newUrl}
+                onChange={(e) => setNewUrl(e.target.value)}
+                required
+              />
+            </div>
+            <div className="newtab-modal-actions">
+              <button
+                type="button"
+                className="settings-btn-secondary"
+                onClick={() => setShowAddModal(false)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="settings-btn-primary">
+                Done
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   )
 }
