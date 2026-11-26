@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { NewTabDashboard } from './components/NewTabDashboard.js'
+import { SettingsPage } from './components/SettingsPage.js'
 import type {
   AgentEvent,
+  BrowserSettings,
   ContentBounds,
   DownloadRecord,
   PublicConfig,
@@ -72,6 +74,7 @@ export function App(): React.JSX.Element {
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false)
   const [historyItems, setHistoryItems] = useState<TaskHistoryItem[]>([])
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false)
+  const [browserSettings, setBrowserSettings] = useState<BrowserSettings | null>(null)
   const [settingsBaseUrl, setSettingsBaseUrl] = useState('')
   const [settingsApiKey, setSettingsApiKey] = useState('')
   const [settingsModel, setSettingsModel] = useState('')
@@ -155,6 +158,30 @@ export function App(): React.JSX.Element {
 
     // Get config
     window.api.config.get().then(setConfig).catch(console.error)
+
+    // Load browser settings & apply theme
+    window.api.settings
+      .get()
+      .then((s) => {
+        setBrowserSettings(s)
+        if (s.defaultDryRun) setQueueDryRun(true)
+      })
+      .catch(console.error)
+
+    window.api.theme
+      .getEffective()
+      .then((eff) => {
+        document.documentElement.setAttribute('data-theme', eff)
+      })
+      .catch(console.error)
+
+    const unbindSettings = window.api.settings.onUpdated((s) => {
+      setBrowserSettings(s)
+    })
+
+    const unbindTheme = window.api.theme.onChanged((eff) => {
+      document.documentElement.setAttribute('data-theme', eff)
+    })
 
     // Load initial history
     loadHistory()
@@ -261,6 +288,8 @@ export function App(): React.JSX.Element {
     return () => {
       unbindTabs()
       unbindAgent()
+      unbindSettings()
+      unbindTheme()
       unbindQueue?.()
       unbindDownloads?.()
     }
@@ -291,13 +320,36 @@ export function App(): React.JSX.Element {
     feedEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [events])
 
+  const buildSearchUrl = (query: string): string => {
+    const q = encodeURIComponent(query)
+    switch (browserSettings?.searchEngine) {
+      case 'duckduckgo':
+        return `https://duckduckgo.com/?q=${q}`
+      case 'bing':
+        return `https://www.bing.com/search?q=${q}`
+      case 'brave':
+        return `https://search.brave.com/search?q=${q}`
+      case 'custom': {
+        const tpl = browserSettings.customSearchUrl || 'https://www.google.com/search?q=%s'
+        return tpl.includes('%s') ? tpl.replace('%s', q) : `${tpl}${q}`
+      }
+      default:
+        return `https://www.google.com/search?q=${q}`
+    }
+  }
+
   const resolveTargetUrl = (raw: string): string => {
     const target = raw.trim()
-    if (!/^https?:\/\//i.test(target) && !target.startsWith('about:') && !target.startsWith('file:')) {
+    if (
+      !/^https?:\/\//i.test(target) &&
+      !target.startsWith('about:') &&
+      !target.startsWith('file:') &&
+      !target.startsWith('edith://')
+    ) {
       if (target.includes('.') && !target.includes(' ')) {
         return `https://${target}`
       }
-      return `https://www.google.com/search?q=${encodeURIComponent(target)}`
+      return buildSearchUrl(target)
     }
     return target
   }
@@ -323,7 +375,7 @@ export function App(): React.JSX.Element {
 
   const handleGoHome = () => {
     if (activeTabId) {
-      window.api?.tabs.navigate(activeTabId, 'about:blank')
+      window.api?.tabs.navigate(activeTabId, browserSettings?.homeUrl || 'about:blank')
     }
   }
 
@@ -442,14 +494,14 @@ export function App(): React.JSX.Element {
 
   // Settings operations
   const handleOpenSettings = () => {
-    setSettingsBaseUrl(config?.baseUrl || '')
-    setSettingsApiKey(config?.apiKey || '')
-    setSettingsModel(config?.model || '')
-    setShowApiKeyText(false)
-    setSettingsPingStatus(null)
-    setShowSettingsDrawer(true)
     setShowMoreMenu(false)
     setShowHistoryDrawer(false)
+    const existing = tabs.find((t) => t.url === 'edith://settings')
+    if (existing) {
+      void window.api?.tabs.activate(existing.id)
+      return
+    }
+    void window.api?.tabs.create('edith://settings')
   }
 
   const handleSaveSettings = async () => {
@@ -553,9 +605,11 @@ export function App(): React.JSX.Element {
             >
               <IconReload size={15} className={activeTab?.loading ? 'spin-animation' : ''} />
             </button>
-            <button className="btn-icon" title="Open home page" onClick={handleGoHome}>
-              <IconHome size={16} />
-            </button>
+            {(browserSettings?.showHomeButton ?? true) && (
+              <button className="btn-icon" title="Open home page" onClick={handleGoHome}>
+                <IconHome size={16} />
+              </button>
+            )}
           </div>
 
           {/* Chrome-Style Pill Omnibox */}
@@ -649,6 +703,14 @@ export function App(): React.JSX.Element {
             </button>
 
             <button
+              className={`btn-icon ${activeTab?.url === 'edith://settings' ? 'active' : ''}`}
+              title="Browser Settings (edith://settings)"
+              onClick={handleOpenSettings}
+            >
+              <IconSettings size={16} />
+            </button>
+
+            <button
               className={`btn-agent-toggle ${sidebarOpen ? 'active' : ''}`}
               title="Toggle EDITH"
               onClick={() => {
@@ -675,30 +737,43 @@ export function App(): React.JSX.Element {
       <div className="main-viewport">
         {/* Placeholder container where TabManager positions active WebContentsView */}
         <div className="web-content-placeholder" ref={contentRef}>
-          {(!activeTab ||
-            !activeTab.url ||
-            activeTab.url === 'about:blank' ||
-            activeTab.url === 'edith://newtab') && (
-            <NewTabDashboard
-              bookmarks={[]}
-              onNavigate={(urlOrQuery) => navigateActiveTab(urlOrQuery)}
-              onRunAgent={(prompt) => {
-                setSidebarOpen(true)
-                void handleRunAgent(prompt)
+          {activeTab?.url === 'edith://settings' && browserSettings ? (
+            <SettingsPage
+              settings={browserSettings}
+              onUpdateSettings={async (patch) => {
+                const updated = await window.api?.settings.update(patch)
+                if (updated) setBrowserSettings(updated)
               }}
-              onOpenSettings={() => {
-                setSidebarOpen(true)
-                handleOpenSettings()
+              onResetSettings={async () => {
+                const reset = await window.api?.settings.reset()
+                if (reset) setBrowserSettings(reset)
               }}
-              onOpenQueue={() => {
-                setSidebarOpen(true)
-                setShowQueueDrawer(true)
-                setShowDownloadsDrawer(false)
-                setShowHistoryDrawer(false)
-                setShowSettingsDrawer(false)
-                setShowMoreMenu(false)
-              }}
+              config={config}
+              onConfigSaved={(cfg) => setConfig(cfg)}
             />
+          ) : (
+            (!activeTab ||
+              !activeTab.url ||
+              activeTab.url === 'about:blank' ||
+              activeTab.url === 'edith://newtab') && (
+              <NewTabDashboard
+                bookmarks={[]}
+                onNavigate={(urlOrQuery) => navigateActiveTab(urlOrQuery)}
+                onRunAgent={(prompt) => {
+                  setSidebarOpen(true)
+                  void handleRunAgent(prompt)
+                }}
+                onOpenSettings={() => handleOpenSettings()}
+                onOpenQueue={() => {
+                  setSidebarOpen(true)
+                  setShowQueueDrawer(true)
+                  setShowDownloadsDrawer(false)
+                  setShowHistoryDrawer(false)
+                  setShowSettingsDrawer(false)
+                  setShowMoreMenu(false)
+                }}
+              />
+            )
           )}
         </div>
 

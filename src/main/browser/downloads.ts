@@ -3,6 +3,7 @@ import { join, parse, extname } from 'node:path'
 import { existsSync, mkdirSync, writeFileSync, statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { BROWSER_PARTITION } from './session.js'
+import { getSettings } from '../settings.js'
 import type { DownloadRecord } from '../../shared/types.js'
 
 let downloadList: DownloadRecord[] = []
@@ -10,7 +11,8 @@ let notifyRenderer: ((records: DownloadRecord[]) => void) | null = null
 let onDownloadCompleteCallback: ((record: DownloadRecord) => void) | null = null
 
 export function getDownloadsDir(): string {
-  const dir = join(app.getPath('downloads'), 'EDITH')
+  const customDir = getSettings().downloadPath?.trim()
+  const dir = customDir || join(app.getPath('downloads'), 'EDITH')
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }
@@ -40,8 +42,12 @@ export function initDownloadManager(onUpdate?: (records: DownloadRecord[]) => vo
     const targetDir = getDownloadsDir()
     const safeSavePath = getUniqueFilePath(targetDir, originalFilename)
 
-    // Set save path so Electron downloads automatically without opening blocking file dialog
-    item.setSavePath(safeSavePath)
+    if (getSettings().askWhereToSave) {
+      item.setSaveDialogOptions({ defaultPath: safeSavePath })
+    } else {
+      // Set save path so Electron downloads automatically without opening blocking file dialog
+      item.setSavePath(safeSavePath)
+    }
 
     const record: DownloadRecord = {
       id: randomUUID(),

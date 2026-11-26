@@ -259,3 +259,41 @@ export interface ApplicationTrackerRecord {
   status: string
   notes: string
 }
+
+/* ── Browser Settings ─────────────────────────────────────────────── */
+
+export type ThemeMode = 'system' | 'dark' | 'light'
+export type StartupBehavior = 'newtab' | 'restore' | 'specific'
+export type SearchEngineId = 'google' | 'duckduckgo' | 'bing' | 'brave' | 'custom'
+export type TypingSpeedMode = 'normal' | 'fast' | 'instant'
+export type EeoPolicy = 'prefer_not_to_say' | 'leave_blank'
+
+export interface BrowserSettings {
+  theme: ThemeMode
+  startupBehavior: StartupBehavior
+  startupUrl: string
+  lastOpenTabs: string[]
+  showHomeButton: boolean
+  homeUrl: string
+  searchEngine: SearchEngineId
+  customSearchUrl: string
+  downloadPath: string
+  askWhereToSave: boolean
+  defaultZoom: number
+  showVirtualCursor: boolean
+  typingSpeed: TypingSpeedMode
+  crossDomainConfirm: boolean
+  defaultDryRun: boolean
+  maxAgentSteps: number
+  eeoPolicy: EeoPolicy
+  rememberSidebar: boolean
+}
+
+export interface BrowserRuntimeInfo {
+  appVersion: string
+  electronVersion: string
+  chromeVersion: string
+  nodeVersion: string
+  userDataPath: string
+  defaultDownloadsPath: string
+}

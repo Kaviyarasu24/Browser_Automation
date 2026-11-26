@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AgentEvent,
   ApplicationTrackerRecord,
+  BrowserRuntimeInfo,
+  BrowserSettings,
   ContentBounds,
   DownloadRecord,
   JobQueueItem,
@@ -76,6 +78,27 @@ export interface EdithApi {
       size?: number
       error?: string
     }>
+  }
+  settings: {
+    get: () => Promise<BrowserSettings>
+    update: (patch: Partial<BrowserSettings>) => Promise<BrowserSettings>
+    reset: () => Promise<BrowserSettings>
+    runtimeInfo: () => Promise<BrowserRuntimeInfo>
+    pickDirectory: () => Promise<string | null>
+    pickFile: (filters?: Array<{ name: string; extensions: string[] }>) => Promise<string | null>
+    onUpdated: (callback: (settings: BrowserSettings) => void) => () => void
+  }
+  privacy: {
+    clearData: (opts: {
+      cache?: boolean
+      cookies?: boolean
+      history?: boolean
+      answersCache?: boolean
+    }) => Promise<{ ok: boolean }>
+  }
+  theme: {
+    getEffective: () => Promise<'dark' | 'light'>
+    onChanged: (callback: (effective: 'dark' | 'light') => void) => () => void
   }
 }
 
@@ -160,6 +183,34 @@ const api: EdithApi = {
   },
   export: {
     saveToFile: (data) => ipcRenderer.invoke('export:saveToFile', data)
+  },
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    update: (patch) => ipcRenderer.invoke('settings:update', patch),
+    reset: () => ipcRenderer.invoke('settings:reset'),
+    runtimeInfo: () => ipcRenderer.invoke('settings:runtimeInfo'),
+    pickDirectory: () => ipcRenderer.invoke('settings:pickDirectory'),
+    pickFile: (filters) => ipcRenderer.invoke('settings:pickFile', filters),
+    onUpdated: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, s: BrowserSettings) => callback(s)
+      ipcRenderer.on('settings:updated', handler)
+      return () => {
+        ipcRenderer.removeListener('settings:updated', handler)
+      }
+    }
+  },
+  privacy: {
+    clearData: (opts) => ipcRenderer.invoke('privacy:clearData', opts)
+  },
+  theme: {
+    getEffective: () => ipcRenderer.invoke('theme:getEffective'),
+    onChanged: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, eff: 'dark' | 'light') => callback(eff)
+      ipcRenderer.on('theme:changed', handler)
+      return () => {
+        ipcRenderer.removeListener('theme:changed', handler)
+      }
+    }
   }
 }
 

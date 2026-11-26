@@ -4,9 +4,14 @@ import { EventEmitter } from 'node:events'
 import type { ContentBounds, TabState } from '../../shared/types.js'
 import { BROWSER_PARTITION, browserUserAgent } from './session.js'
 import { ensureCursor } from './cursor.js'
+import { getSettings } from '../settings.js'
 
 export function isNewTabUrl(url: string): boolean {
   return !url || url === 'about:blank' || url === 'edith://newtab'
+}
+
+export function isInternalUrl(url: string): boolean {
+  return isNewTabUrl(url) || url === 'edith://settings'
 }
 
 export interface Tab {
@@ -185,8 +190,20 @@ export class TabManager extends EventEmitter {
     }
 
     const active = this.getActive()
-    if (active && !isNewTabUrl(active.url)) {
+    if (active && !isInternalUrl(active.url)) {
       active.view.setBounds(this.bounds)
+    }
+  }
+
+  applyZoomToAll(zoomFactor: number): void {
+    for (const tab of this.tabs.values()) {
+      try {
+        if (!tab.view.webContents.isDestroyed()) {
+          tab.view.webContents.setZoomFactor(zoomFactor)
+        }
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -199,14 +216,14 @@ export class TabManager extends EventEmitter {
   navigate(id: string, url: string): void {
     const tab = this.tabs.get(id)
     if (!tab) return
-    if (isNewTabUrl(url)) {
-      tab.url = 'about:blank'
-      tab.title = 'New Tab'
+    if (isInternalUrl(url)) {
+      tab.url = url || 'about:blank'
+      tab.title = url === 'edith://settings' ? 'Settings' : 'New Tab'
       tab.favicon = null
       if (id === this.activeId) this.syncActiveView()
       this.emitState()
     }
-    void tab.view.webContents.loadURL(isNewTabUrl(url) ? 'about:blank' : url).catch((err: Error) => {
+    void tab.view.webContents.loadURL(isInternalUrl(url) ? 'about:blank' : url).catch((err: Error) => {
       console.warn(`[tabs] navigate failed:`, err.message)
     })
   }
@@ -237,11 +254,21 @@ export class TabManager extends EventEmitter {
     })
 
     const syncUrl = (url: string) => {
+      // Preserve virtual internal URLs like edith://settings when backing webContents sits on about:blank
+      if (url === 'about:blank' && tab.url === 'edith://settings') {
+        tab.title = 'Settings'
+        if (tab.id === this.activeId) this.syncActiveView()
+        this.emitState()
+        return
+      }
       tab.url = url
       if (isNewTabUrl(url)) {
         tab.title = 'New Tab'
         tab.favicon = null
-      } else if (tab.title === 'New Tab' || tab.title === 'Untitled') {
+      } else if (url === 'edith://settings') {
+        tab.title = 'Settings'
+        tab.favicon = null
+      } else if (tab.title === 'New Tab' || tab.title === 'Settings' || tab.title === 'Untitled') {
         // A page that never fires page-title-updated still needs a label.
         try {
           tab.title = new URL(url).hostname || url
@@ -258,6 +285,11 @@ export class TabManager extends EventEmitter {
     wc.on('did-navigate', (_e, url) => syncUrl(url))
     wc.on('did-navigate-in-page', (_e, url) => syncUrl(url))
     wc.on('dom-ready', () => {
+      try {
+        wc.setZoomFactor(getSettings().defaultZoom)
+      } catch {
+        /* ignore */
+      }
       void ensureCursor(wc)
     })
 
@@ -279,9 +311,9 @@ export class TabManager extends EventEmitter {
   private syncActiveView(): void {
     const active = this.getActive()
     if (!active) return
-    const isNewTab = isNewTabUrl(active.url)
+    const isInternal = isInternalUrl(active.url)
     const isAttached = this.contentView.children.includes(active.view)
-    if (isNewTab) {
+    if (isInternal) {
       if (isAttached) this.contentView.removeChildView(active.view)
     } else {
       if (!isAttached) this.contentView.addChildView(active.view)

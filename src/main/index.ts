@@ -1,7 +1,16 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, session, shell } from 'electron'
 import { join } from 'node:path'
+import { existsSync, unlinkSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { getConfig, validateConfig, updateConfig } from './config.js'
+import {
+  getSettings,
+  updateSettings,
+  resetSettings,
+  applyThemeSource,
+  getBrowserRuntimeInfo
+} from './settings.js'
+import { BROWSER_PARTITION } from './browser/session.js'
 import { TabManager, tabUserAgent } from './browser/tabs.js'
 import { runAgent } from './agent/loop.js'
 import { ping } from './agent/llm.js'
@@ -88,10 +97,32 @@ function createWindow(): void {
     void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  // Create initial tab once ready
+  // Create initial tab(s) once ready based on startup settings
   mainWindow.webContents.once('did-finish-load', () => {
-    if (tabManager && tabManager.list().length === 0) {
-      tabManager.create('about:blank', true)
+    if (!tabManager || tabManager.list().length > 0) return
+    const settings = getSettings()
+    applyThemeSource(settings.theme)
+
+    if (settings.startupBehavior === 'restore' && settings.lastOpenTabs.length > 0) {
+      const urls = settings.lastOpenTabs.filter((u) => u && u !== 'edith://settings')
+      if (urls.length > 0) {
+        urls.forEach((u, idx) => tabManager!.create(u, idx === 0))
+        return
+      }
+    } else if (settings.startupBehavior === 'specific' && settings.startupUrl.trim()) {
+      tabManager.create(settings.startupUrl.trim(), true)
+      return
+    }
+    tabManager.create('about:blank', true)
+  })
+
+  mainWindow.on('close', () => {
+    if (tabManager) {
+      const openUrls = tabManager
+        .list()
+        .map((t) => t.url)
+        .filter((u) => u && u !== 'edith://settings')
+      updateSettings({ lastOpenTabs: openUrls })
     }
   })
 
@@ -624,6 +655,88 @@ function setupIpc(): void {
       return exportDataToFile(data.content, data.filename, data.format)
     }
   )
+
+  // Browser Settings & Theme
+  ipcMain.handle('settings:get', () => getSettings())
+  ipcMain.handle('settings:update', (_event, patch: Record<string, unknown>) => {
+    const updated = updateSettings(patch)
+    if (tabManager && patch.defaultZoom !== undefined) {
+      tabManager.applyZoomToAll(updated.defaultZoom)
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('settings:updated', updated)
+      mainWindow.webContents.send('theme:changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
+    }
+    return updated
+  })
+  ipcMain.handle('settings:reset', () => {
+    const reset = resetSettings()
+    if (tabManager) tabManager.applyZoomToAll(reset.defaultZoom)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('settings:updated', reset)
+      mainWindow.webContents.send('theme:changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
+    }
+    return reset
+  })
+  ipcMain.handle('settings:runtimeInfo', () => getBrowserRuntimeInfo())
+
+  ipcMain.handle('settings:pickDirectory', async () => {
+    if (!mainWindow) return null
+    const res = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory', 'createDirectory']
+    })
+    return res.canceled ? null : (res.filePaths[0] ?? null)
+  })
+
+  ipcMain.handle(
+    'settings:pickFile',
+    async (_event, filters?: Array<{ name: string; extensions: string[] }>) => {
+      if (!mainWindow) return null
+      const res = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openFile'],
+        filters: filters || [{ name: 'Documents', extensions: ['pdf', 'doc', 'docx'] }]
+      })
+      return res.canceled ? null : (res.filePaths[0] ?? null)
+    }
+  )
+
+  ipcMain.handle(
+    'privacy:clearData',
+    async (
+      _event,
+      opts: { cache?: boolean; cookies?: boolean; history?: boolean; answersCache?: boolean }
+    ) => {
+      const sess = session.fromPartition(BROWSER_PARTITION)
+      if (opts.cache) {
+        await sess.clearCache()
+      }
+      if (opts.cookies) {
+        await sess.clearStorageData()
+      }
+      if (opts.history) {
+        clearHistory()
+      }
+      if (opts.answersCache) {
+        const cacheFile = join(app.getPath('userData'), 'answers-cache.json')
+        if (existsSync(cacheFile)) {
+          try {
+            unlinkSync(cacheFile)
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle('theme:getEffective', () => (nativeTheme.shouldUseDarkColors ? 'dark' : 'light'))
+
+  nativeTheme.on('updated', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('theme:changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
+    }
+  })
 }
 
 /* ── App Lifecycle ─────────────────────────────────────────────────── */
