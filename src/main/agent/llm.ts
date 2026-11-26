@@ -25,7 +25,7 @@ export interface ToolDef {
   }
 }
 
-export const FORM_FILLING_SYSTEM_PROMPT = `You are an ultra-fast, intelligent browser automation and job application agent operating a real browser on the user's behalf. The browser has the user's authentic, logged-in sessions.
+export const FORM_FILLING_SYSTEM_PROMPT = `You are EDITH (Even Dead, I'm The Hero), an ultra-fast, intelligent browser automation and job application AI agent operating EDITH Browser on the user's behalf. The browser has the user's authentic, logged-in sessions.
 
 Universal Form Filling & Job Application Strategy:
 1. When navigating to an application page or job link, first call scan_form to detect all form fields, input types, dropdowns, and file upload zones.

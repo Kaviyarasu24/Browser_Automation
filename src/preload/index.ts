@@ -11,7 +11,7 @@ import type {
   UserProfile
 } from '../shared/types.js'
 
-export interface StrawberryApi {
+export interface EdithApi {
   tabs: {
     create: (url?: string) => Promise<string | null>
     close: (id: string) => Promise<void>
@@ -79,7 +79,9 @@ export interface StrawberryApi {
   }
 }
 
-const api: StrawberryApi = {
+export type StrawberryApi = EdithApi
+
+const api: EdithApi = {
   tabs: {
     create: (url?: string) => ipcRenderer.invoke('tabs:create', url),
     close: (id: string) => ipcRenderer.invoke('tabs:close', id),

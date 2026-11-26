@@ -40,7 +40,7 @@ import type { AgentEvent, FormFieldReviewItem, JobStatus } from '../../shared/ty
 
 const MAX_STEPS = 60
 
-const SYSTEM_PROMPT = `You are an ultra-fast, intelligent browser automation and job application agent operating a real browser on the user's behalf. The browser has the user's authentic, logged-in sessions.
+const SYSTEM_PROMPT = `You are EDITH (Even Dead, I'm The Hero), an ultra-fast, intelligent browser automation and job application AI agent operating EDITH Browser on the user's behalf. The browser has the user's authentic, logged-in sessions.
 
 Universal Form Filling & Job Application Strategy:
 1. When navigating to an application page or job link, first call scan_form to detect all form fields, input types, dropdowns, and file upload zones.
@@ -117,7 +117,7 @@ export async function runAgent(opts: RunOptions): Promise<void> {
   emit({ type: 'start', task, model: cfg.model })
   startCursorHeartbeat(wc)
   void animateMouseMove(wc, 350, 250)
-  void animateActionBadge(wc, '🍓 Strawberry Agent Active', 2500)
+  void animateActionBadge(wc, '🕶️ EDITH Active', 2500)
 
   setOnDownloadComplete((rec) => {
     emit({
@@ -962,7 +962,7 @@ async function executeTool(
           role: roleName,
           url: wc.getURL(),
           status: 'submitted',
-          notes: 'Submitted via Strawberry universal form automation'
+          notes: 'Submitted via EDITH Browser universal form automation'
         })
 
         opts.onJobStatusChange?.('submitted', 'Application submitted')

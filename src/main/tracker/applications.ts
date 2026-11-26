@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, writeFileSync, appendFileSync, readFileSync } fr
 import type { ApplicationTrackerRecord } from '../../shared/types.js'
 
 function getTrackerFilePath(): string {
-  const dir = join(app.getPath('downloads'), 'Strawberry')
+  const dir = join(app.getPath('downloads'), 'EDITH')
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }

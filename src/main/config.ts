@@ -93,7 +93,7 @@ export function getConfig(): RuntimeConfig {
     apiKey: (process.env.API_KEY ?? '').trim(),
     model: (process.env.MODEL ?? '').trim(),
     siteUrl: (process.env.OPENROUTER_SITE_URL ?? '').trim(),
-    siteName: (process.env.OPENROUTER_SITE_NAME ?? 'Strawberry').trim()
+    siteName: (process.env.OPENROUTER_SITE_NAME ?? 'EDITH Browser').trim()
   }
 
   return cached

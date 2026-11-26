@@ -10,7 +10,7 @@ let notifyRenderer: ((records: DownloadRecord[]) => void) | null = null
 let onDownloadCompleteCallback: ((record: DownloadRecord) => void) | null = null
 
 export function getDownloadsDir(): string {
-  const dir = join(app.getPath('downloads'), 'Strawberry')
+  const dir = join(app.getPath('downloads'), 'EDITH')
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }

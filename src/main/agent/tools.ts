@@ -163,7 +163,7 @@ export const BROWSER_TOOLS: ToolDef[] = [
     function: {
       name: 'export_data',
       description:
-        'Save extracted data, tables, reports, or findings directly to a local file in the user\'s Downloads/Strawberry folder. Format can be "csv", "json", "md", or "txt". Use this whenever the user asks to save, download, or export data.',
+        'Save extracted data, tables, reports, or findings directly to a local file in the user\'s Downloads/EDITH folder. Format can be "csv", "json", "md", or "txt". Use this whenever the user asks to save, download, or export data.',
       parameters: {
         type: 'object',
         properties: {

@@ -1,7 +1,7 @@
 {
-  "name": "strawberry",
+  "name": "edith-browser",
   "version": "0.1.0",
-  "description": "AI-first desktop browser. An agent that drives your real, logged-in browsing session.",
+  "description": "EDITH Browser - AI-first desktop browser driven by EDITH, your intelligent autonomous browsing copilot.",
   "main": "./out/main/index.js",
   "license": "MIT",
   "private": true,

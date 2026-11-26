@@ -644,7 +644,7 @@ export function App(): React.JSX.Element {
 
             <button
               className={`btn-agent-toggle ${sidebarOpen ? 'active' : ''}`}
-              title="Toggle Copilot"
+              title="Toggle EDITH"
               onClick={() => {
                 setSidebarOpen((prev) => {
                   const next = !prev
@@ -659,7 +659,7 @@ export function App(): React.JSX.Element {
               }}
             >
               <span className={`agent-dot ${agentStatus === 'running' ? 'running' : ''}`} />
-              <span>Copilot</span>
+              <span>EDITH</span>
             </button>
           </div>
         </div>
@@ -1328,9 +1328,9 @@ export function App(): React.JSX.Element {
               {events.length === 0 ? (
                 /* Hero Greeting Screen (Matches User's Reference Screenshot Exactly) */
                 <div className="copilot-hero">
-                  <h1 className="copilot-greeting">Hi, how can I help?</h1>
+                  <h1 className="copilot-greeting">Hi, I'm EDITH</h1>
                   <p className="copilot-subtitle">
-                    I'm here to help when you need me. Tell me what you're working on, and we can get started.
+                    Even Dead, I'm The Hero. Tell me what you're working on, and I'll automate your browser or fill applications.
                   </p>
 
                   <div className="copilot-suggestions">
@@ -1861,7 +1861,7 @@ export function App(): React.JSX.Element {
                 <textarea
                   ref={textareaRef}
                   className="copilot-textarea"
-                  placeholder="Message Copilot"
+                  placeholder="Ask EDITH to fill a job form, search, or automate..."
                   rows={1}
                   value={taskPrompt}
                   disabled={agentStatus === 'running'}

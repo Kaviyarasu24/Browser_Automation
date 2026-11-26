@@ -1,8 +1,8 @@
-# 🍓 Strawberry
+# 🕶️ EDITH Browser
 
-> **AI-first desktop browser.** An autonomous browser agent that drives your real, authenticated desktop browsing session with a live, persistent virtual cursor.
+> **AI-first desktop browser.** An autonomous browser agent powered by **EDITH** (*Even Dead, I'm The Hero*) that drives your real, authenticated desktop browsing session with a live, persistent virtual cursor.
 
-Strawberry is an AI desktop browser built with **Electron**, **TypeScript**, **Vite**, and **React**. Unlike conventional headless agents or Playwright-based bots that spin up empty, ephemeral browser contexts every run, Strawberry operates directly within your persistent user partition (`persist:strawberry`). 
+EDITH Browser is an AI desktop browser built with **Electron**, **TypeScript**, **Vite**, and **React**. Unlike conventional headless agents or Playwright-based bots that spin up empty, ephemeral browser contexts every run, EDITH Browser operates directly within your persistent user partition (`persist:strawberry`). 
 
 Because it runs inside your genuine desktop session with stored cookies and local credentials, the agent can interact with your logged-in services without triggering login walls, multi-factor prompts, or bot-detection heuristics.
 

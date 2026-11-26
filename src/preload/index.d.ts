@@ -1,8 +1,8 @@
-import type { StrawberryApi } from './index.js'
+import type { EdithApi } from './index.js'
 
 declare global {
   interface Window {
-    api: StrawberryApi
+    api: EdithApi
   }
 }
 

@@ -51,7 +51,7 @@ function createWindow(): void {
     height: 900,
     minWidth: 800,
     minHeight: 600,
-    title: 'Strawberry',
+    title: 'EDITH Browser',
     backgroundColor: '#121214',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
