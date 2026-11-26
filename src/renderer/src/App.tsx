@@ -61,6 +61,7 @@ const MODEL_PRESETS = [
 export function App(): React.JSX.Element {
   const [tabs, setTabs] = useState<TabState[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
+  const [failedTabFavicons, setFailedTabFavicons] = useState<Record<string, boolean>>({})
   const [urlInput, setUrlInput] = useState('')
   const [isOmniboxFocused, setOmniboxFocused] = useState(false)
   const [copiedUrl, setCopiedUrl] = useState(false)
@@ -562,37 +563,69 @@ export function App(): React.JSX.Element {
       <div className="header-bar">
         {/* Chrome-Style Tab Strip */}
         <div className="tab-strip">
-          {tabs.map((tab) => (
-            <div
-              key={tab.id}
-              className={`tab-item ${tab.id === activeTabId ? 'active' : ''}`}
-              onClick={() => window.api?.tabs.activate(tab.id)}
-              title={tab.title || 'New Tab'}
-            >
-              {tab.loading ? (
-                <IconSpinner size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-              ) : tab.favicon ? (
-                <img
-                  className="tab-favicon"
-                  src={tab.favicon}
-                  alt=""
-                  onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
-                />
-              ) : (
-                <div className="tab-favicon">
-                  <IconGlobe size={14} />
-                </div>
-              )}
-              <span className="tab-title">{tab.title || (tab.loading ? 'Loading…' : 'New Tab')}</span>
-              <button
-                className="tab-close"
-                title="Close tab"
-                onClick={(e) => handleCloseTab(e, tab.id)}
+          {tabs.map((tab) => {
+            const isDownloadsTab = tab.url === 'edith://downloads'
+            const isSettingsTab = tab.url === 'edith://settings'
+            const isHomeTab = !tab.url || tab.url === 'about:blank' || tab.url === 'edith://newtab'
+            let fallbackFavicon = ''
+            if (!isDownloadsTab && !isSettingsTab && !isHomeTab) {
+              try {
+                const host = new URL(tab.url).hostname
+                if (host) {
+                  fallbackFavicon = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`
+                }
+              } catch {
+                /* ignore */
+              }
+            }
+            const iconSrc = tab.favicon || fallbackFavicon
+
+            return (
+              <div
+                key={tab.id}
+                className={`tab-item ${tab.id === activeTabId ? 'active' : ''}`}
+                onClick={() => window.api?.tabs.activate(tab.id)}
+                title={tab.title || 'New Tab'}
               >
-                <IconClose size={12} />
-              </button>
-            </div>
-          ))}
+                {tab.loading ? (
+                  <IconSpinner size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                ) : isDownloadsTab ? (
+                  <div className="tab-favicon">
+                    <IconDownload size={14} />
+                  </div>
+                ) : isSettingsTab ? (
+                  <div className="tab-favicon">
+                    <IconSettings size={14} />
+                  </div>
+                ) : isHomeTab ? (
+                  <div className="tab-favicon">
+                    <IconHome size={14} />
+                  </div>
+                ) : iconSrc && !failedTabFavicons[iconSrc] ? (
+                  <img
+                    className="tab-favicon"
+                    src={iconSrc}
+                    alt=""
+                    onError={() =>
+                      setFailedTabFavicons((prev) => ({ ...prev, [iconSrc]: true }))
+                    }
+                  />
+                ) : (
+                  <div className="tab-favicon">
+                    <IconGlobe size={14} />
+                  </div>
+                )}
+                <span className="tab-title">{tab.title || (tab.loading ? 'Loading…' : 'New Tab')}</span>
+                <button
+                  className="tab-close"
+                  title="Close tab"
+                  onClick={(e) => handleCloseTab(e, tab.id)}
+                >
+                  <IconClose size={12} />
+                </button>
+              </div>
+            )
+          })}
           <button className="btn-new-tab" title="New tab (Ctrl+T)" onClick={handleCreateTab}>
             <IconPlus size={15} />
           </button>
